@@ -35,7 +35,19 @@ Write-Host ''
 Write-Host 'Export LC Portal - environment inspection (READ ONLY)' -ForegroundColor Cyan
 Write-Host ('=' * 70) -ForegroundColor Cyan
 
-if (-not $SkipConnect) { Connect-PnPOnline -Url $SiteUrl -Interactive -ErrorAction Stop }
+if (-not $SkipConnect) {
+    try {
+        Connect-PnPOnline -Url $SiteUrl -Interactive -ErrorAction Stop
+    }
+    catch {
+        # "Specified method is not supported" and similar show up when the local machine
+        # can't use the WAM browser broker (missing/disabled Web Account Manager component).
+        # Device login has no such dependency - it works from any machine with a browser.
+        Write-Warning "Interactive sign-in didn't work on this machine ($($_.Exception.Message))."
+        Write-Warning 'Falling back to device login - open the URL printed below in any browser and enter the code shown.'
+        Connect-PnPOnline -Url $SiteUrl -DeviceLogin -ErrorAction Stop
+    }
+}
 
 $web = Get-PnPWeb -Includes Created, WebTemplate, Language, Description
 Write-Host ''

@@ -72,7 +72,16 @@ Write-Host 'Export LC Portal - security model' -ForegroundColor Cyan
 Write-Host ('=' * 60) -ForegroundColor Cyan
 if ($WhatIfPreference) { Write-Host 'Mode: WhatIf (no changes will be made)' -ForegroundColor Yellow }
 
-if (-not $SkipConnect) { Connect-PnPOnline -Url $SiteUrl -Interactive -ErrorAction Stop }
+if (-not $SkipConnect) {
+    try {
+        Connect-PnPOnline -Url $SiteUrl -Interactive -ErrorAction Stop
+    }
+    catch {
+        Write-Warning "Interactive sign-in didn't work on this machine ($($_.Exception.Message))."
+        Write-Warning 'Falling back to device login - open the URL printed below in any browser and enter the code shown.'
+        Connect-PnPOnline -Url $SiteUrl -DeviceLogin -ErrorAction Stop
+    }
+}
 
 # ---------------------------------------------------------------------------
 Write-Host ''

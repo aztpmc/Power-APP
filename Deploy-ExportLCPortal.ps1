@@ -84,7 +84,14 @@ if (-not (Get-Module -ListAvailable -Name PnP.PowerShell)) {
 Import-Module PnP.PowerShell -ErrorAction Stop
 
 Write-Host 'Signing in once - every phase below reuses this connection.' -ForegroundColor Cyan
-Connect-PnPOnline -Url $SiteUrl -Interactive -ErrorAction Stop
+try {
+    Connect-PnPOnline -Url $SiteUrl -Interactive -ErrorAction Stop
+}
+catch {
+    Write-Warning "Interactive sign-in didn't work on this machine ($($_.Exception.Message))."
+    Write-Warning 'Falling back to device login - open the URL printed below in any browser and enter the code shown.'
+    Connect-PnPOnline -Url $SiteUrl -DeviceLogin -ErrorAction Stop
+}
 Write-Host "Connected: $((Get-PnPWeb).Title)" -ForegroundColor Green
 
 $summary = [ordered]@{}

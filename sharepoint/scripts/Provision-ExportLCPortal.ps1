@@ -229,7 +229,14 @@ $schema = Get-Content -Path $SchemaPath -Raw | ConvertFrom-Json
 
 if (-not $SkipConnect) {
     Write-Host 'Connecting...' -ForegroundColor Cyan
-    Connect-PnPOnline -Url $SiteUrl -Interactive -ErrorAction Stop
+    try {
+        Connect-PnPOnline -Url $SiteUrl -Interactive -ErrorAction Stop
+    }
+    catch {
+        Write-Warning "Interactive sign-in didn't work on this machine ($($_.Exception.Message))."
+        Write-Warning 'Falling back to device login - open the URL printed below in any browser and enter the code shown.'
+        Connect-PnPOnline -Url $SiteUrl -DeviceLogin -ErrorAction Stop
+    }
 }
 $web = Get-PnPWeb
 Write-Host "Connected to: $($web.Title)" -ForegroundColor Green
