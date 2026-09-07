@@ -1,6 +1,6 @@
 # Legacy extraction summary
 
-Generated 2026-09-07 10:35 from: LC Export.xlsx, LC Master Export 2026.xlsx
+Generated 2026-09-07 14:03 from: LC Export.xlsx, LC Master Export 2026.xlsx
 
 ## Records extracted
 
