@@ -1,0 +1,448 @@
+# =============================================================================
+# scrAdmin - Administration
+# =============================================================================
+# Everything the brief says must not be hard-coded is edited here: banks, customers,
+# countries, currencies, LC types, statuses and their allowed transitions, document
+# types, discrepancy categories, Incoterms, ports, payment terms, users and roles,
+# approval rules, reminder rules and workflow configuration.
+#
+# The screen is one editor over fourteen master lists rather than fourteen editors.
+# Each list declares its columns; the grid renders whichever is selected and writes
+# back through a single Patch. Adding a new master list is a row in galAdminLists.
+#
+# Access: the whole screen requires the ADMIN role in the app, and the underlying
+# lists are additionally locked to the Export LC Administrators SharePoint group by
+# Set-Permissions.ps1. The app-side check is convenience; the SharePoint permission
+# is the control.
+# =============================================================================
+
+scrAdmin As screen:
+    Fill: =ThemeCanvas
+    OnVisible: |
+        =Set(gblNavSection, "ADMIN");
+        If(IsBlank(gblAdminTab), Set(gblAdminTab, "Banks"));
+        Set(gblAdminSearch, "")
+
+    navRail As cmpNavRail:
+        X: =0
+        Y: =0
+        Width: =RailWidth
+        Height: =Parent.Height
+        ActiveKey: ="ADMIN"
+        UserName: =gblUserName
+        RoleLabel: |
+            =Switch(gblRole, "ADMIN", "Administrator", "MANAGER", "Treasury Manager",
+                "OFFICER", "Treasury Officer", "REVIEWER", "Reviewer", "Read only")
+        OnNavigate: |
+            =Switch(
+                gblNavSection,
+                "HOME",      Navigate(scrDashboard, ScreenTransition.None),
+                "LCS",       Navigate(scrLCRegister, ScreenTransition.None),
+                "INVOICES",  Navigate(scrInvoices, ScreenTransition.None),
+                "SHIPMENTS", Navigate(scrShipments, ScreenTransition.None),
+                "PRESENT",   Navigate(scrPresentations, ScreenTransition.None),
+                "DOCS",      Navigate(scrDocuments, ScreenTransition.None),
+                "DISCREP",   Navigate(scrDiscrepancies, ScreenTransition.None),
+                "PROCEEDS",  Navigate(scrProceeds, ScreenTransition.None),
+                "CORRESP",   Navigate(scrCorrespondence, ScreenTransition.None),
+                "TASKS",     Navigate(scrTasks, ScreenTransition.None),
+                "REPORTS",   Navigate(scrReports, ScreenTransition.None),
+                "ADMIN",     Navigate(scrAdmin, ScreenTransition.None)
+            )
+    topBar As cmpTopBar:
+        X: =ContentX
+        Y: =0
+        Width: =ContentWidth
+        Height: =ThemeTopBarHeight
+        TitleText: ="Administration"
+        Breadcrumb: ="Administration  ·  " & gblAdminTab
+        ShowSearch: =false
+        ShowPrimary: =false
+
+    # A read-only user who reaches this screen by URL sees this and nothing else.
+    lblNoAccess As label:
+        X: =ContentX
+        Y: =ThemeTopBarHeight + ThemeSpace5
+        Width: =ContentWidth
+        Height: =60
+        Visible: =!IsAdmin
+        Text: |
+            ="Administration is restricted to portal administrators. Your role is " &
+             Switch(gblRole, "MANAGER", "Treasury Manager", "OFFICER", "Treasury Officer",
+                    "REVIEWER", "Reviewer", "Read only") & "."
+        Font: =ThemeFont
+        Size: =ThemeSizeHeading
+        Color: =ThemeTextSecondary
+        PaddingLeft: =0
+
+    galAdminLists As gallery:
+        X: =ContentX
+        Y: =ThemeTopBarHeight + ThemeSpace3
+        Width: =240
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        Visible: =IsAdmin
+        TemplateSize: =36
+        TemplatePadding: =0
+        ShowScrollbar: =true
+        DelayItemLoading: =false
+        Items: |
+            =Table(
+                { Key: "Banks",       Label: "Banks",                  Grp: "Counterparties" },
+                { Key: "Customers",   Label: "Customers",              Grp: "Counterparties" },
+                { Key: "Countries",   Label: "Countries",              Grp: "Reference" },
+                { Key: "Currencies",  Label: "Currencies and FX rates", Grp: "Reference" },
+                { Key: "Ports",       Label: "Ports",                  Grp: "Reference" },
+                { Key: "Incoterms",   Label: "Incoterms",              Grp: "Reference" },
+                { Key: "PaymentTerms", Label: "Payment terms",         Grp: "Reference" },
+                { Key: "LCTypes",     Label: "LC types",               Grp: "Product" },
+                { Key: "DocTypes",    Label: "Document types",         Grp: "Documents" },
+                { Key: "Checklist",   Label: "Checklist templates",    Grp: "Documents" },
+                { Key: "DiscCats",    Label: "Discrepancy categories", Grp: "Operations" },
+                { Key: "Statuses",    Label: "Statuses and transitions", Grp: "Workflow" },
+                { Key: "Config",      Label: "Workflow configuration", Grp: "Workflow" },
+                { Key: "Users",       Label: "Users and roles",        Grp: "Security" },
+                { Key: "Import",      Label: "Excel import",           Grp: "Data" },
+                { Key: "Audit",       Label: "Audit trail",            Grp: "Data" }
+            )
+
+        btnAdminTab As button:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth - ThemeSpace3
+            Height: =34
+            Text: =""
+            Fill: =If(gblAdminTab = ThisItem.Key, ThemeAccentSoft, ThemeSurface)
+            HoverFill: =ThemeSurfaceHover
+            BorderColor: =If(gblAdminTab = ThisItem.Key, ThemeAccent, ThemeBorder)
+            BorderThickness: =1
+            RadiusTopLeft: =4
+            RadiusTopRight: =4
+            RadiusBottomLeft: =4
+            RadiusBottomRight: =4
+            AccessibleLabel: =ThisItem.Label
+            OnSelect: |
+                =Set(gblAdminTab, ThisItem.Key);
+                Set(gblAdminSearch, "");
+                If(ThisItem.Key = "Import", Navigate(scrImport, ScreenTransition.None))
+
+        lblAdminTab As label:
+            X: =ThemeSpace3
+            Y: =0
+            Width: =Parent.TemplateWidth - ThemeSpace3 - 12
+            Height: =20
+            Text: =ThisItem.Label
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: |
+                =If(gblAdminTab = ThisItem.Key, FontWeight.Semibold, FontWeight.Normal)
+            Color: =If(gblAdminTab = ThisItem.Key, ThemeAccent, ThemeText)
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+            DisplayMode: =DisplayMode.View
+
+        lblAdminGrp As label:
+            X: =ThemeSpace3
+            Y: =18
+            Width: =Parent.TemplateWidth - ThemeSpace3 - 12
+            Height: =14
+            Text: =ThisItem.Grp
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: =ThemeTextMuted
+            PaddingLeft: =0
+            DisplayMode: =DisplayMode.View
+
+    txtAdminSearch As text:
+        X: =ContentX + 250
+        Y: =ThemeTopBarHeight + ThemeSpace3
+        Width: =240
+        Height: =32
+        Visible: =IsAdmin
+        HintText: ="Search this list"
+        DelayOutput: =true
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        BorderColor: =ThemeBorderStrong
+        FocusedBorderColor: =ThemeAccent
+        BorderThickness: =1
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        OnChange: =Set(gblAdminSearch, Self.Value)
+
+    lblAdminHint As label:
+        X: =ContentX + 500
+        Y: =ThemeTopBarHeight + ThemeSpace3
+        Width: =ContentWidth - 510
+        Height: =32
+        Visible: =IsAdmin
+        Text: |
+            =Switch(
+                gblAdminTab,
+                "Statuses", "Editing AllowedNextStatuses changes which workflow moves the whole portal permits. Removing a value can strand records in their current state.",
+                "Config",   "These values are read by the app and by every flow. A change takes effect on the next app session and the next flow run.",
+                "Users",    "This controls what the portal offers a user. What they can physically reach is set by their SharePoint group membership.",
+                "Checklist", "Rules here decide which documents each new LC requires. The most specific matching rule set wins.",
+                "Currencies", "Pegged rates are safe to leave. Floating rates left blank are treated as 1 in exposure reports, so set them or leave those currencies inactive.",
+                "Rows are saved as you change them. Nothing here is deleted by the portal."
+            )
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =ThemeTextMuted
+        VerticalAlign: =VerticalAlign.Middle
+        PaddingLeft: =0
+
+    galAdminRows As gallery:
+        X: =ContentX + 250
+        Y: =ThemeTopBarHeight + ThemeSpace3 + 40
+        Width: =ContentWidth - 250
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        Visible: =IsAdmin && gblAdminTab <> "Audit"
+        TemplateSize: =44
+        TemplatePadding: =0
+        ShowScrollbar: =true
+        DelayItemLoading: =true
+        # One branch per master list, each shaped into a common five-column record so a
+        # single row template edits any of them.
+        Items: |
+            =Switch(
+                gblAdminTab,
+                "Banks",
+                    ForAll(SortByColumns(Filter('12_Banks', StartsWith(Title, gblAdminSearch)), "Title", SortOrder.Ascending) As r,
+                        { Id: r.ID, K: r.Title, A: r.BankGroup, B: If(r.CanAdvise, "Advises", "") & If(r.CanIssue, " Issues", ""),
+                          C: Coalesce(r.CountryName, ""), Act: r.IsActive, Src: "12_Banks" }),
+                "Customers",
+                    ForAll(FirstN(SortByColumns(Filter('11_Customers', StartsWith(Title, gblAdminSearch)), "Title", SortOrder.Ascending), 500) As r,
+                        { Id: r.ID, K: r.Title, A: Coalesce(r.CustomerCode, ""), B: Coalesce(r.CountryName, ""),
+                          C: Coalesce(r.CustomerType, ""), Act: r.IsActive, Src: "11_Customers" }),
+                "Countries",
+                    ForAll(SortByColumns(Filter('13_Countries', StartsWith(Title, gblAdminSearch)), "Title", SortOrder.Ascending) As r,
+                        { Id: r.ID, K: r.Title, A: Coalesce(r.CountryCode, ""), B: Coalesce(r.Region, ""),
+                          C: "Risk " & r.RiskRating, Act: r.IsActive, Src: "13_Countries" }),
+                "Currencies",
+                    ForAll(SortByColumns(Filter('14_Currencies', StartsWith(Title, gblAdminSearch)), "SortOrder", SortOrder.Ascending) As r,
+                        { Id: r.ID, K: r.Title, A: Coalesce(r.CurrencyName, ""), B: "Rate to USD " & Coalesce(Text(r.RateToUSD), "not set"),
+                          C: Text(r.DecimalPlaces) & " dp", Act: r.IsActive, Src: "14_Currencies" }),
+                "Ports",
+                    ForAll(SortByColumns(Filter('22_Ports', StartsWith(Title, gblAdminSearch)), "Title", SortOrder.Ascending) As r,
+                        { Id: r.ID, K: r.Title, A: Coalesce(r.PortCode, ""), B: r.PortType,
+                          C: Coalesce(r.CountryName, ""), Act: r.IsActive, Src: "22_Ports" }),
+                "Incoterms",
+                    ForAll(SortByColumns(Filter('21_Incoterms', StartsWith(Title, gblAdminSearch)), "SortOrder", SortOrder.Ascending) As r,
+                        { Id: r.ID, K: r.Title, A: Coalesce(r.IncotermName, ""), B: r.TransportMode,
+                          C: If(r.InsuranceBySeller, "Seller insures", ""), Act: r.IsActive, Src: "21_Incoterms" }),
+                "PaymentTerms",
+                    ForAll(SortByColumns(Filter('25_PaymentTerms', StartsWith(Title, gblAdminSearch)), "SortOrder", SortOrder.Ascending) As r,
+                        { Id: r.ID, K: r.Title, A: r.SettlementType, B: Text(r.TenorDays) & " days",
+                          C: r.MaturityBasis, Act: r.IsActive, Src: "25_PaymentTerms" }),
+                "LCTypes",
+                    ForAll(SortByColumns(Filter('23_LCTypes', StartsWith(Title, gblAdminSearch)), "SortOrder", SortOrder.Ascending) As r,
+                        { Id: r.ID, K: r.Title, A: r.LCTypeCode, B: Coalesce(r.DefaultAvailableBy, ""),
+                          C: Text(r.DefaultPresentationDays) & " day presentation", Act: r.IsActive, Src: "23_LCTypes" }),
+                "DocTypes",
+                    ForAll(SortByColumns(Filter('15_DocumentTypes', StartsWith(Title, gblAdminSearch)), "SortOrder", SortOrder.Ascending) As r,
+                        { Id: r.ID, K: r.Title, A: r.DocumentTypeCode, B: r.DocumentCategory,
+                          C: "to " & r.TargetLibrary, Act: r.IsActive, Src: "15_DocumentTypes" }),
+                "Checklist",
+                    ForAll(SortByColumns(Filter('19_DocChecklistTemplates', StartsWith(Title, gblAdminSearch)), "SortOrder", SortOrder.Ascending) As r,
+                        { Id: r.ID, K: r.Title, A: r.DocumentTypeName,
+                          B: Trim(Coalesce(r.AppliesToCountry, "") & " " & Coalesce(r.AppliesToLCType, "") & " " & Coalesce(r.AppliesToIncoterm, "")),
+                          C: If(r.IsRequired, "Required", "Optional") & " · " & Text(r.RequiredOriginals) & " orig",
+                          Act: r.IsActive, Src: "19_DocChecklistTemplates" }),
+                "DiscCats",
+                    ForAll(SortByColumns(Filter('24_DiscrepancyCategories', StartsWith(Title, gblAdminSearch)), "SortOrder", SortOrder.Ascending) As r,
+                        { Id: r.ID, K: r.Title, A: r.CategoryGroup, B: r.DefaultSeverity,
+                          C: "resolve in " & Text(r.DefaultResolutionDays) & "d · escalate " & Text(r.EscalateAfterDays) & "d",
+                          Act: r.IsActive, Src: "24_DiscrepancyCategories" }),
+                "Statuses",
+                    ForAll(SortByColumns(Filter('16_StatusMaster', StartsWith(Title, gblAdminSearch)), "EntityName", SortOrder.Ascending, "SortOrder", SortOrder.Ascending) As r,
+                        { Id: r.ID, K: r.EntityName & " · " & r.Title, A: Coalesce(r.LifecycleStage, ""),
+                          B: "next: " & Coalesce(Substitute(r.AllowedNextStatuses, ";", ", "), "terminal"),
+                          C: If(r.RequiresApproval, "approval by " & r.ApprovalRoleCode, ""), Act: r.IsActive, Src: "16_StatusMaster" }),
+                "Config",
+                    ForAll(SortByColumns(Filter('18_WorkflowConfig', StartsWith(Title, gblAdminSearch)), "SortOrder", SortOrder.Ascending) As r,
+                        { Id: r.ID, K: r.Title, A: r.ConfigGroup, B: Left(r.ConfigValue, 60),
+                          C: Coalesce(r.AppliesTo, ""), Act: r.IsActive, Src: "18_WorkflowConfig" }),
+                "Users",
+                    ForAll(SortByColumns(Filter('17_Users', StartsWith(Title, gblAdminSearch)), "Title", SortOrder.Ascending) As r,
+                        { Id: r.ID, K: r.Title, A: r.UserEmail,
+                          B: Switch(r.RoleCode, "ADMIN", "Administrator", "MANAGER", "Treasury Manager",
+                                     "OFFICER", "Treasury Officer", "REVIEWER", "Reviewer", "Read only"),
+                          C: If(IsBlank(r.ApprovalLimit), "", "limit " & Text(r.ApprovalLimit, "#,##0")),
+                          Act: r.IsActive, Src: "17_Users" }),
+                Blank()
+            )
+        OnSelect: |
+            =Set(gblAdminRow, ThisItem);
+            Set(gblAdminEditOpen, true)
+
+        recAdBg As rectangle:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight - 1
+            Fill: =If(ThisItem.Act, ThemeSurface, ThemeSurfaceAlt)
+
+        recAdRule As rectangle:
+            X: =0
+            Y: =Parent.TemplateHeight - 1
+            Width: =Parent.TemplateWidth
+            Height: =1
+            Fill: =ThemeBorder
+
+        lblAdK As label:
+            X: =ThemeSpace3
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.26
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.K
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: =FontWeight.Semibold
+            Color: =If(ThisItem.Act, ThemeText, ThemeTextMuted)
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblAdA As label:
+            X: =lblAdK.X + lblAdK.Width
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.16
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.A
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblAdB As label:
+            X: =lblAdA.X + lblAdA.Width
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.28
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.B
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeText
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblAdC As label:
+            X: =lblAdB.X + lblAdB.Width
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.18
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.C
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextMuted
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        tglAdActive As toggle:
+            X: =Parent.TemplateWidth - 90
+            Y: =10
+            Width: =80
+            Height: =24
+            Default: =ThisItem.Act
+            # Master data is deactivated, never deleted. Deleting a bank or a currency that
+            # historical records point at would orphan them; deactivating removes it from
+            # every picker while leaving history readable.
+            OnCheck: |
+                =Patch(ThisItem.Src, LookUp(ThisItem.Src, ID = ThisItem.Id), { IsActive: true });
+                Select(btnLogAdminChange)
+            OnUncheck: |
+                =Patch(ThisItem.Src, LookUp(ThisItem.Src, ID = ThisItem.Id), { IsActive: false });
+                Select(btnLogAdminChange)
+
+    btnLogAdminChange As button:
+        X: =-100
+        Y: =-100
+        Width: =1
+        Height: =1
+        Visible: =false
+        Text: =""
+        OnSelect: |
+            =Patch(
+                '10_AuditLog', Defaults('10_AuditLog'),
+                {
+                    Title: "MasterData:" & gblAdminTab,
+                    EntityName: "MasterData",
+                    RecordReference: gblAdminTab,
+                    ActionType: "Update",
+                    FieldName: "IsActive",
+                    IsCriticalField: true,
+                    ActionByEmail: User().Email,
+                    ActionByName: User().FullName,
+                    ActionTimestamp: Now(),
+                    ActionSource: "Power App",
+                    ActionComment: "Master data activation changed in " & gblAdminTab,
+                    CorrelationId: GUID(),
+                    PartitionKey: Text(Today0, "yyyy-mm")
+                }
+            )
+
+    # --- audit viewer -------------------------------------------------------
+    galAdminAudit As gallery:
+        X: =ContentX + 250
+        Y: =ThemeTopBarHeight + ThemeSpace3 + 40
+        Width: =ContentWidth - 250
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        Visible: =IsAdmin && gblAdminTab = "Audit"
+        TemplateSize: =48
+        TemplatePadding: =0
+        DelayItemLoading: =true
+        Items: |
+            =SortByColumns(
+                Filter(
+                    '10_AuditLog',
+                    PartitionKey in [AuditPartitionNow, AuditPartitionPrev],
+                    StartsWith(RecordReference, gblAdminSearch) || StartsWith(ActionByEmail, gblAdminSearch)
+                ),
+                "ActionTimestamp", SortOrder.Descending
+            )
+
+        recAuBg As rectangle:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight - 1
+            Fill: =If(ThisItem.IsCriticalField, ThemeWarningSoft, ThemeSurface)
+
+        recAuRule As rectangle:
+            X: =0
+            Y: =Parent.TemplateHeight - 1
+            Width: =Parent.TemplateWidth
+            Height: =1
+            Fill: =ThemeBorder
+
+        lblAuLine1 As label:
+            X: =ThemeSpace3
+            Y: =5
+            Width: =Parent.TemplateWidth - ThemeSpace4
+            Height: =20
+            Text: |
+                =Text(ThisItem.ActionTimestamp, "dd mmm yyyy HH:mm") & "  ·  " & ThisItem.ActionByName &
+                 "  ·  " & ThisItem.EntityName & " " & ThisItem.RecordReference & "  ·  " & ThisItem.ActionType
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeText
+            PaddingLeft: =0
+
+        lblAuLine2 As label:
+            X: =ThemeSpace3
+            Y: =24
+            Width: =Parent.TemplateWidth - ThemeSpace4
+            Height: =18
+            Text: |
+                =If(
+                    Len(Coalesce(ThisItem.FieldName, "")) > 0,
+                    ThisItem.FieldName & ":  " & Coalesce(ThisItem.OldValue, "(blank)") & "   to   " & Coalesce(ThisItem.NewValue, "(blank)"),
+                    Coalesce(ThisItem.ActionComment, "")
+                )
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: =ThemeTextSecondary
+            PaddingLeft: =0

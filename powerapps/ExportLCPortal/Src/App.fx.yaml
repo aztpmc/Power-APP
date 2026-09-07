@@ -1,0 +1,479 @@
+# =============================================================================
+# Export LC Portal - App object
+# =============================================================================
+# Power Fx source in the canvas-app YAML format. Two ways to use it:
+#
+#   1) pac canvas pack --sources powerapps/ExportLCPortal/Src --msapp ExportLCPortal.msapp
+#   2) Paste the App.Formulas block into App -> Formulas in Studio, and paste each screen's
+#      YAML onto a blank screen (Studio accepts control YAML on the clipboard).
+#
+# Design rules this file enforces, and why:
+#
+#   * Named formulas instead of OnStart Set(). Named formulas are lazy and recomputed only
+#     when their inputs change, so opening the app does not wait for a wall of assignments.
+#     OnStart is reserved for the few things that genuinely must be imperative.
+#   * User-defined functions for every configuration read. Nothing in this app reads a
+#     threshold, an offset or a reminder window from a literal - it all resolves through
+#     18_WorkflowConfig via CfgN / CfgT / CfgB / CfgList.
+#   * No ClearCollect over transactional lists. Master data is small and cached once;
+#     ExportLCs, Invoices, Documents and AuditLog are always queried server-side with
+#     delegable predicates.
+#   * Every colour, radius and spacing value is a token. Re-skinning the portal means
+#     editing the Theme block, not hunting through screens.
+#
+# Requires: user-defined functions enabled (Settings -> Updates -> Retired/Experimental ->
+# "User-defined functions"). If your tenant does not have them, docs/04-powerfx-patterns.md
+# gives the LookUp form to substitute.
+# =============================================================================
+
+App As appinfo:
+    BackEnabled: =false
+    Theme: =PowerAppsTheme
+
+    # -------------------------------------------------------------------------
+    # OnStart - deliberately small. Only master data caching and user context.
+    # Target: under 1.5s on a warm connection.
+    # -------------------------------------------------------------------------
+    OnStart: |
+        =Concurrent(
+            ClearCollect(
+                colConfig,
+                ShowColumns(
+                    Filter('18_WorkflowConfig', IsActive = true),
+                    Title, ConfigValue, ConfigGroup, ValueType
+                )
+            ),
+            ClearCollect(
+                colStatus,
+                ShowColumns(
+                    Filter('16_StatusMaster', IsActive = true),
+                    Title, EntityName, StatusCode, StatusDisplayName, LifecycleStage,
+                    StageOrder, BadgeColor, AllowedNextStatuses, RequiresApproval,
+                    ApprovalRoleCode, RequiresComment, IsOpenState, IsTerminal, SortOrder
+                )
+            ),
+            ClearCollect(
+                colDocTypes,
+                ShowColumns(
+                    Filter('15_DocumentTypes', IsActive = true),
+                    Title, DocumentTypeCode, DocumentCategory, TargetLibrary,
+                    IsDefaultRequired, RequiresOriginal, DefaultCopies, RequiresReview, SortOrder
+                )
+            ),
+            ClearCollect(
+                colCurrencies,
+                ShowColumns(Filter('14_Currencies', IsActive = true),
+                    Title, CurrencyName, CurrencySymbol, DecimalPlaces, RateToUSD, SortOrder)
+            ),
+            ClearCollect(
+                colDiscCategories,
+                ShowColumns(Filter('24_DiscrepancyCategories', IsActive = true),
+                    Title, CategoryCode, CategoryGroup, DefaultSeverity, DefaultResolutionDays,
+                    UsuallyRequiresWaiver, EscalateAfterDays, GuidanceText, SortOrder)
+            ),
+            ClearCollect(
+                colIncoterms,
+                ShowColumns(Filter('21_Incoterms', IsActive = true), Title, IncotermName, InsuranceBySeller, SortOrder)
+            ),
+            ClearCollect(
+                colLCTypes,
+                ShowColumns(Filter('23_LCTypes', IsActive = true), Title, LCTypeCode, DefaultAvailableBy,
+                    DefaultPresentationDays, DefaultIrrevocable, RequiresConfirmation, SortOrder)
+            ),
+            ClearCollect(
+                colPaymentTerms,
+                ShowColumns(Filter('25_PaymentTerms', IsActive = true), Title, PaymentTermCode,
+                    SettlementType, TenorDays, MaturityBasis, SortOrder)
+            )
+        );
+
+        // Role resolution. 17_Users is the app-side role; SharePoint groups are the real
+        // boundary. A user with no row gets READONLY rather than an error or a blank screen.
+        Set(
+            gblUserRow,
+            LookUp('17_Users', UserEmail = User().Email && IsActive = true)
+        );
+        Set(gblRole, Coalesce(gblUserRow.RoleCode, "READONLY"));
+        Set(gblUserName, Coalesce(gblUserRow.Title, User().FullName));
+
+        // Navigation state.
+        Set(gblNavSection, "HOME");
+        Set(gblNavExpanded, true);
+        Set(gblWorkspaceTab, "Overview");
+        Set(gblToast, Blank());
+
+        // Register-filter state. Held in one record so "Clear all filters" is one Set and
+        // so a KPI card can deep-link into the register by setting several filters at once.
+        Set(gblFilter, DefaultRegisterFilter);
+
+    Formulas: |
+        // =====================================================================
+        // THEME TOKENS
+        // The whole visual identity of the portal is these ~40 values.
+        // =====================================================================
+        ThemeRailBg          = ColorValue("#0F2B46");
+        ThemeRailBgHover     = ColorValue("#17395A");
+        ThemeRailBgActive    = ColorValue("#1B4A75");
+        ThemeRailText        = ColorValue("#C3D3E2");
+        ThemeRailTextActive  = ColorValue("#FFFFFF");
+        ThemeRailAccent      = ColorValue("#4DA3FF");
+
+        ThemeCanvas          = ColorValue("#F4F6F9");
+        ThemeSurface         = ColorValue("#FFFFFF");
+        ThemeSurfaceAlt      = ColorValue("#F8FAFC");
+        ThemeSurfaceHover    = ColorValue("#EEF3F9");
+        ThemeBorder          = ColorValue("#E2E8F0");
+        ThemeBorderStrong    = ColorValue("#CBD5E1");
+
+        ThemeText            = ColorValue("#10202E");
+        ThemeTextSecondary   = ColorValue("#5A6B7C");
+        ThemeTextMuted       = ColorValue("#8A99A8");
+        ThemeTextInverse     = ColorValue("#FFFFFF");
+
+        ThemeAccent          = ColorValue("#1B6EC2");
+        ThemeAccentHover     = ColorValue("#155BA3");
+        ThemeAccentSoft      = ColorValue("#E8F1FB");
+
+        ThemeSuccess         = ColorValue("#0F7B3F");
+        ThemeSuccessSoft     = ColorValue("#E6F4EC");
+        ThemeWarning         = ColorValue("#B26A00");
+        ThemeWarningSoft     = ColorValue("#FDF3E3");
+        ThemeDanger          = ColorValue("#C2352B");
+        ThemeDangerSoft      = ColorValue("#FBEAE9");
+        ThemeInfo            = ColorValue("#1B6EC2");
+        ThemeInfoSoft        = ColorValue("#E8F1FB");
+        ThemeProgress        = ColorValue("#0B6E8F");
+        ThemeProgressSoft    = ColorValue("#E4F1F5");
+        ThemeMuted           = ColorValue("#6B7785");
+        ThemeMutedSoft       = ColorValue("#EFF2F5");
+
+        // Typography. One family, six sizes - anything outside this list is a mistake.
+        ThemeFont            = Font.'Segoe UI';
+        ThemeSizeDisplay     = 26;
+        ThemeSizeTitle       = 19;
+        ThemeSizeHeading     = 15;
+        ThemeSizeBody        = 13;
+        ThemeSizeSmall       = 11.5;
+        ThemeSizeMicro       = 10;
+
+        // Spacing scale (4px base) and layout constants.
+        ThemeSpace1          = 4;
+        ThemeSpace2          = 8;
+        ThemeSpace3          = 12;
+        ThemeSpace4          = 16;
+        ThemeSpace5          = 24;
+        ThemeSpace6          = 32;
+        ThemeRadius          = 6;
+        ThemeRadiusLarge     = 10;
+        ThemeRailWidth       = 232;
+        ThemeRailWidthMini   = 60;
+        ThemeTopBarHeight    = 56;
+        ThemeRowHeight       = 44;
+
+        // Responsive breakpoints. Below Compact the rail collapses to icons and the
+        // register switches from a table to stacked cards.
+        BreakpointCompact    = 900;
+        BreakpointMedium     = 1280;
+        IsCompact            = App.Width < BreakpointCompact;
+        IsMedium             = App.Width < BreakpointMedium;
+        RailWidth            = If(IsCompact, ThemeRailWidthMini, ThemeRailWidth);
+        ContentX             = RailWidth + ThemeSpace5;
+        ContentWidth         = App.Width - RailWidth - (ThemeSpace5 * 2);
+
+        // =====================================================================
+        // CONFIGURATION ACCESSORS
+        // Every threshold in the app resolves through these. The fallback is what the
+        // app uses if a config row is missing - it is never the source of truth.
+        // =====================================================================
+        CfgT(key: Text, fallback: Text): Text =
+            Coalesce(LookUp(colConfig, Title = key).ConfigValue, fallback);
+
+        CfgN(key: Text, fallback: Number): Number =
+            Coalesce(Value(LookUp(colConfig, Title = key).ConfigValue), fallback);
+
+        CfgB(key: Text, fallback: Boolean): Boolean =
+            With(
+                { v: Lower(Coalesce(LookUp(colConfig, Title = key).ConfigValue, "")) },
+                If(v = "", fallback, v in ["true", "yes", "1"])
+            );
+
+        // Splits a semicolon-separated config value into a table of numbers, e.g.
+        // LCExpiryReminderDays "30;14;7;3;1" -> [30, 14, 7, 3, 1].
+        CfgList(key: Text): Table =
+            ForAll(
+                Split(Coalesce(LookUp(colConfig, Title = key).ConfigValue, ""), ";") As s,
+                { Value: Value(Trim(s.Value)) }
+            );
+
+        // Dashboard windows, read once and reused by every KPI card and its drill-through.
+        WinExpiringSoon      = CfgN("DashboardExpiringSoonDays", 30);
+        WinShipmentSoon      = CfgN("DashboardShipmentSoonDays", 14);
+        WinNewLC             = CfgN("DashboardNewLCDays", 30);
+        WinMaturitySoon      = CfgN("DashboardMaturitySoonDays", 30);
+        RegisterPageSize     = CfgN("DashboardRegisterPageSize", 50);
+        BaseCurrency         = CfgT("BaseReportingCurrency", "USD");
+        PortalName           = CfgT("PortalDisplayName", "Export LC Portal");
+        SupportEmail         = CfgT("PortalSupportEmail", "");
+
+        // Date anchors. Computed once per session rather than per row, which is what keeps
+        // the delegable Filter() predicates below from being re-evaluated per record.
+        Today0               = Today();
+        DateExpirySoon       = DateAdd(Today0, WinExpiringSoon, Days);
+        DateShipSoon         = DateAdd(Today0, WinShipmentSoon, Days);
+        DateNewFrom          = DateAdd(Today0, -WinNewLC, Days);
+        DateMaturitySoon     = DateAdd(Today0, WinMaturitySoon, Days);
+
+        // =====================================================================
+        // ROLE AND PERMISSION
+        // The SharePoint groups are the boundary; these only decide what the UI offers.
+        // =====================================================================
+        IsAdmin              = gblRole = "ADMIN";
+        IsManager            = gblRole in ["ADMIN", "MANAGER"];
+        IsOfficer            = gblRole in ["ADMIN", "MANAGER", "OFFICER"];
+        IsReviewer           = gblRole in ["ADMIN", "MANAGER", "OFFICER", "REVIEWER"];
+        IsReadOnly           = gblRole = "READONLY";
+
+        CanCreateLC          = IsOfficer;
+        CanEditLC            = IsOfficer;
+        CanDeleteRecord      = IsAdmin;
+        CanApprove           = IsManager;
+        CanCloseLC           = If(CfgB("LCClosureRequiresApproval", true), IsManager, IsOfficer);
+        CanEditMasterData    = IsAdmin;
+        CanCommitImport      = If(CfgB("ImportRequireAdminCommit", true), IsAdmin, IsManager);
+        CanReviewDocuments   = IsReviewer;
+
+        // Officers may be scoped to a portfolio. Empty scope means the whole book.
+        UserCustomerScope    = Coalesce(gblUserRow.CustomerScope, "");
+        HasCustomerScope     = Len(UserCustomerScope) > 0;
+
+        // =====================================================================
+        // STATUS AND LIFECYCLE
+        // =====================================================================
+        StatusRow(entity: Text, status: Text): Record =
+            LookUp(colStatus, EntityName = entity && StatusCode = status);
+
+        StatusBadgeColor(entity: Text, status: Text): Color =
+            Switch(
+                Coalesce(StatusRow(entity, status).BadgeColor, "Neutral"),
+                "Success",  ThemeSuccess,
+                "Warning",  ThemeWarning,
+                "Danger",   ThemeDanger,
+                "Info",     ThemeInfo,
+                "Progress", ThemeProgress,
+                "Muted",    ThemeMuted,
+                ThemeTextSecondary
+            );
+
+        StatusBadgeFill(entity: Text, status: Text): Color =
+            Switch(
+                Coalesce(StatusRow(entity, status).BadgeColor, "Neutral"),
+                "Success",  ThemeSuccessSoft,
+                "Warning",  ThemeWarningSoft,
+                "Danger",   ThemeDangerSoft,
+                "Info",     ThemeInfoSoft,
+                "Progress", ThemeProgressSoft,
+                "Muted",    ThemeMutedSoft,
+                ThemeMutedSoft
+            );
+
+        StatusLabel(entity: Text, status: Text): Text =
+            Coalesce(StatusRow(entity, status).StatusDisplayName, status);
+
+        // The transition gate. Section 35's rule lives here and nowhere else: a status
+        // change is legal only if the target appears in the current status's
+        // AllowedNextStatuses. Terminal states have an empty list and allow nothing.
+        CanTransition(entity: Text, fromStatus: Text, toStatus: Text): Boolean =
+            fromStatus = toStatus ||
+            Trim(toStatus) in ForAll(
+                Split(Coalesce(StatusRow(entity, fromStatus).AllowedNextStatuses, ""), ";") As s,
+                { Value: Trim(s.Value) }
+            ).Value;
+
+        TransitionBlockReason(entity: Text, fromStatus: Text, toStatus: Text): Text =
+            If(
+                CanTransition(entity, fromStatus, toStatus),
+                "",
+                "'" & StatusLabel(entity, fromStatus) & "' cannot move directly to '" &
+                StatusLabel(entity, toStatus) & "'. Allowed next: " &
+                Coalesce(
+                    Substitute(StatusRow(entity, fromStatus).AllowedNextStatuses, ";", ", "),
+                    "none - this is a final state"
+                ) & "."
+            );
+
+        LifecycleStages = Table(
+            { Stage: "Received", Ord: 1 }, { Stage: "Reviewed", Ord: 2 }, { Stage: "Active", Ord: 3 },
+            { Stage: "Shipment", Ord: 4 }, { Stage: "Presentation", Ord: 5 }, { Stage: "Examination", Ord: 6 },
+            { Stage: "Acceptance", Ord: 7 }, { Stage: "Payment", Ord: 8 }, { Stage: "Closed", Ord: 9 }
+        );
+
+        StageOrderOf(status: Text): Number = Coalesce(StatusRow("ExportLC", status).StageOrder, 0);
+
+        // =====================================================================
+        // FORMATTING
+        // =====================================================================
+        CcySymbol(code: Text): Text =
+            Coalesce(LookUp(colCurrencies, Title = code).CurrencySymbol, code & " ");
+
+        Money(amount: Number, code: Text): Text =
+            If(IsBlank(amount), "-", CcySymbol(code) & Text(amount, "[$-en-US]#,##0.00"));
+
+        MoneyShort(amount: Number, code: Text): Text =
+            If(
+                IsBlank(amount), "-",
+                Abs(amount) >= 1000000, CcySymbol(code) & Text(amount / 1000000, "[$-en-US]#,##0.0") & "M",
+                Abs(amount) >= 1000,    CcySymbol(code) & Text(amount / 1000, "[$-en-US]#,##0.0") & "K",
+                CcySymbol(code) & Text(amount, "[$-en-US]#,##0")
+            );
+
+        // Mixed-currency exposure is normalised through 14_Currencies, never summed raw.
+        ToBase(amount: Number, code: Text): Number =
+            amount * Coalesce(LookUp(colCurrencies, Title = code).RateToUSD, 1);
+
+        DateShort(d: DateTime): Text = If(IsBlank(d), "-", Text(d, "dd MMM yyyy"));
+
+        DaysUntil(d: DateTime): Number = If(IsBlank(d), 9999, DateDiff(Today0, d, Days));
+
+        // "in 12 days" / "8 days ago" / "today" - used on every deadline in the portal.
+        DaysPhrase(d: DateTime): Text =
+            If(
+                IsBlank(d), "no date",
+                With({ n: DateDiff(Today0, d, Days) },
+                    If(
+                        n = 0, "today",
+                        n = 1, "tomorrow",
+                        n = -1, "yesterday",
+                        n > 0, "in " & n & " days",
+                        Abs(n) & " days ago"
+                    )
+                )
+            );
+
+        UrgencyColor(d: DateTime): Color =
+            With({ n: DaysUntil(d) },
+                If(n < 0, ThemeDanger, n <= 7, ThemeDanger, n <= 14, ThemeWarning, n <= 30, ThemeInfo, ThemeTextSecondary));
+
+        // =====================================================================
+        // DELEGABLE DATA ACCESS
+        //
+        // Every one of these is a server-side Filter on indexed columns. None of them
+        // pulls a list into a collection. IsClosed is always the first predicate because
+        // it is the most selective index in the solution.
+        // =====================================================================
+        OpenLCs              = Filter('01_ExportLCs', IsClosed = false);
+        AllLCs               = '01_ExportLCs';
+
+        LCsExpiringSoon      = Filter('01_ExportLCs', IsClosed = false, ExpiryDate <= DateExpirySoon, ExpiryDate >= Today0);
+        LCsExpired           = Filter('01_ExportLCs', IsClosed = false, ExpiryDate < Today0);
+        LCsShipmentSoon      = Filter('01_ExportLCs', IsClosed = false, LatestShipmentDate <= DateShipSoon, LatestShipmentDate >= Today0);
+        LCsShipmentOverdue   = Filter('01_ExportLCs', IsClosed = false, LatestShipmentDate < Today0);
+        LCsNew               = Filter('01_ExportLCs', ReceivedDate >= DateNewFrom);
+        LCsPendingAction     = Filter('01_ExportLCs', IsClosed = false, LCStatus in ["Received", "Under Review", "Discrepancy"]);
+        LCsWithMissingDocs   = Filter('01_ExportLCs', IsClosed = false, MissingDocumentCount > 0);
+        LCsWithDiscrepancies = Filter('01_ExportLCs', IsClosed = false, OpenDiscrepancyCount > 0);
+        MyLCs                = Filter('01_ExportLCs', IsClosed = false, ResponsibleOfficerEmail = User().Email);
+
+        PendingAmendments    = Filter('02_LCAmendments', AppliedToLC = false);
+        OpenDiscrepancies    = Filter('06_Discrepancies', IsOpen = true);
+        OpenPresentations    = Filter('05_Presentations', IsClosed = false);
+        UnsettledInvoices    = Filter('03_Invoices', IsSettled = false);
+        OutstandingProceeds  = Filter('07_Proceeds', IsSettled = false);
+        OpenTasks            = Filter('09_Tasks', IsOpen = true);
+        MyOpenTasks          = Filter('09_Tasks', IsOpen = true, AssignedToEmail = User().Email);
+        MyOverdueTasks       = Filter('09_Tasks', IsOpen = true, AssignedToEmail = User().Email, DueDate < Today0);
+        OverdueTasks         = Filter('09_Tasks', IsOpen = true, DueDate < Today0);
+        OpenCorrespondence   = Filter('08_Correspondence', IsOpen = true, ActionRequired = true);
+
+        // Per-LC child queries. LCItemId is indexed on every child list, so these stay
+        // server-side no matter how large the lists become.
+        AmendmentsFor(lcId: Number): Table   = Filter('02_LCAmendments', LCItemId = lcId);
+        InvoicesFor(lcId: Number): Table     = Filter('03_Invoices', LCItemId = lcId);
+        ShipmentsFor(lcId: Number): Table    = Filter('04_Shipments', LCItemId = lcId);
+        PresentationsFor(lcId: Number): Table = Filter('05_Presentations', LCItemId = lcId);
+        DiscrepanciesFor(lcId: Number): Table = Filter('06_Discrepancies', LCItemId = lcId);
+        ProceedsFor(lcId: Number): Table     = Filter('07_Proceeds', LCItemId = lcId);
+        CorrespondenceFor(lcId: Number): Table = Filter('08_Correspondence', LCItemId = lcId);
+        TasksFor(lcId: Number): Table        = Filter('09_Tasks', LCItemId = lcId);
+        ChecklistFor(lcId: Number): Table    = Filter('20_LCDocumentChecklist', LCItemId = lcId);
+        DocumentsFor(lcNo: Text): Table      = Filter(ExportLCDocuments, LCNumber = lcNo);
+
+        // Audit is partitioned by month. Reading the current and previous partition covers
+        // every realistic "what changed recently" question without a full-list scan.
+        AuditPartitionNow    = Text(Today0, "yyyy-mm");
+        AuditPartitionPrev   = Text(DateAdd(Today0, -1, Months), "yyyy-mm");
+        AuditFor(lcid: Text): Table =
+            Filter('10_AuditLog', InternalLCID = lcid,
+                   PartitionKey in [AuditPartitionNow, AuditPartitionPrev]);
+
+        // =====================================================================
+        // REGISTER FILTER
+        // One record holds the whole filter state so a KPI card can deep-link by setting
+        // several criteria at once, and "Clear filters" is a single assignment.
+        // =====================================================================
+        // Every criterion the register understands, in one record. Presets do not branch the
+        // query - they set fields in here - so the register only ever runs ONE delegable
+        // Filter() no matter how the user arrived at it.
+        DefaultRegisterFilter = {
+            Search: "",
+            Status: "",
+            Customer: "",
+            Bank: "",
+            Currency: "",
+            Country: "",
+            Officer: "",
+            Preset: "",
+            AmountFrom: Blank(),
+            AmountTo: Blank(),
+            ExpiryFrom: Blank(),
+            ExpiryTo: Blank(),
+            ShipFrom: Blank(),
+            ShipTo: Blank(),
+            ReceivedFrom: Blank(),
+            MinMissingDocs: 0,
+            MinDiscrepancies: 0,
+            RequiresActionOnly: false,
+            IncludeClosed: false,
+            SortBy: "ExpiryDate",
+            SortDesc: false
+        };
+
+        // Wide-open sentinel bounds. Using a constant instead of Blank() keeps the
+        // comparison delegable - SharePoint has no OData form for "ignore this predicate".
+        DateFloor = Date(1900, 1, 1);
+        DateCeiling = Date(2999, 12, 31);
+        AmountCeiling = 999999999999;
+
+        // Translates a dashboard drill-through into filter criteria. One place decides what
+        // "Expiring Soon" means in the register, and it agrees with the KPI by construction.
+        PresetFilter(preset: Text, mineOnly: Boolean): Record =
+            With(
+                { base: Patch(DefaultRegisterFilter, { Preset: preset, Officer: If(mineOnly, User().Email, "") }) },
+                Switch(
+                    preset,
+                    "ACTIVE",           Patch(base, { IncludeClosed: false }),
+                    "NEW",              Patch(base, { ReceivedFrom: DateNewFrom }),
+                    "PENDING_ACTION",   Patch(base, { RequiresActionOnly: true }),
+                    "EXPIRING_SOON",    Patch(base, { ExpiryFrom: Today0, ExpiryTo: DateExpirySoon }),
+                    "EXPIRED",          Patch(base, { ExpiryTo: DateAdd(Today0, -1, Days) }),
+                    "SHIPMENT_SOON",    Patch(base, { ShipFrom: Today0, ShipTo: DateShipSoon }),
+                    "SHIPMENT_OVERDUE", Patch(base, { ShipTo: DateAdd(Today0, -1, Days) }),
+                    "MISSING_DOCS",     Patch(base, { MinMissingDocs: 1 }),
+                    "DISCREPANCIES",    Patch(base, { MinDiscrepancies: 1 }),
+                    "MINE",             Patch(base, { Officer: User().Email }),
+                    "ALL",              Patch(base, { IncludeClosed: true }),
+                    base
+                )
+            );
+
+    OnError: |
+        =Trace(
+            "ExportLCPortal error",
+            TraceSeverity.Error,
+            { Kind: FirstError.Kind, Message: FirstError.Message, Source: FirstError.Source, Observed: FirstError.Observed }
+        );
+        Notify(
+            "Something went wrong: " & FirstError.Message &
+            If(Len(SupportEmail) > 0, "  Contact " & SupportEmail & " if it keeps happening.", ""),
+            NotificationType.Error,
+            6000
+        )

@@ -1,0 +1,240 @@
+# =============================================================================
+# scrSearch - global search
+# =============================================================================
+# One term, searched across six entities at once. Each entity is queried separately with
+# a delegable StartsWith over its indexed columns, capped at 20 hits, so the whole screen
+# costs six small server-side calls regardless of how large the lists are.
+#
+# StartsWith rather than "contains": SharePoint delegates StartsWith and does not
+# delegate the general contains predicate. A search that quietly stops at 2,000 rows is
+# worse than one that is honest about matching from the start of a value.
+# =============================================================================
+
+scrSearch As screen:
+    Fill: =ThemeCanvas
+    OnVisible: =Set(gblNavSection, "HOME")
+
+    navRail As cmpNavRail:
+        X: =0
+        Y: =0
+        Width: =RailWidth
+        Height: =Parent.Height
+        ActiveKey: ="HOME"
+        UserName: =gblUserName
+        RoleLabel: |
+            =Switch(gblRole, "ADMIN", "Administrator", "MANAGER", "Treasury Manager",
+                "OFFICER", "Treasury Officer", "REVIEWER", "Reviewer", "Read only")
+        OnNavigate: |
+            =Switch(
+                gblNavSection,
+                "HOME",      Navigate(scrDashboard, ScreenTransition.None),
+                "LCS",       Navigate(scrLCRegister, ScreenTransition.None),
+                "INVOICES",  Navigate(scrInvoices, ScreenTransition.None),
+                "SHIPMENTS", Navigate(scrShipments, ScreenTransition.None),
+                "PRESENT",   Navigate(scrPresentations, ScreenTransition.None),
+                "DOCS",      Navigate(scrDocuments, ScreenTransition.None),
+                "DISCREP",   Navigate(scrDiscrepancies, ScreenTransition.None),
+                "PROCEEDS",  Navigate(scrProceeds, ScreenTransition.None),
+                "CORRESP",   Navigate(scrCorrespondence, ScreenTransition.None),
+                "TASKS",     Navigate(scrTasks, ScreenTransition.None),
+                "REPORTS",   Navigate(scrReports, ScreenTransition.None),
+                "ADMIN",     Navigate(scrAdmin, ScreenTransition.None)
+            )
+    topBar As cmpTopBar:
+        X: =ContentX
+        Y: =0
+        Width: =ContentWidth
+        Height: =ThemeTopBarHeight
+        TitleText: ="Search"
+        Breadcrumb: |
+            =If(Len(gblGlobalSearch) > 0, "Results for '" & gblGlobalSearch & "'", "Enter a search term")
+        ShowSearch: =false
+        ShowBack: =true
+        OnBack: =Back()
+        ShowPrimary: =false
+
+    txtSearchMain As text:
+        X: =ContentX
+        Y: =ThemeTopBarHeight + ThemeSpace3
+        Width: =ContentWidth - 160
+        Height: =40
+        Default: =gblGlobalSearch
+        HintText: ="LC number, our reference, customer, invoice, presentation, discrepancy or document"
+        DelayOutput: =true
+        Font: =ThemeFont
+        Size: =ThemeSizeHeading
+        BorderColor: =ThemeBorderStrong
+        FocusedBorderColor: =ThemeAccent
+        BorderThickness: =1
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        OnChange: =Set(gblGlobalSearch, Trim(Self.Value))
+
+    lblSearchHint As label:
+        X: =ContentX
+        Y: =txtSearchMain.Y + 46
+        Width: =ContentWidth
+        Height: =20
+        Text: |
+            =If(
+                Len(gblGlobalSearch) = 0,
+                "Type at least two characters. Matching is from the start of a value, which is what keeps the search fast on a large register.",
+                "Showing up to 20 matches per section."
+            )
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =ThemeTextMuted
+        PaddingLeft: =0
+
+    galResults As gallery:
+        X: =ContentX
+        Y: =lblSearchHint.Y + 26
+        Width: =ContentWidth
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        TemplateSize: =46
+        TemplatePadding: =0
+        ShowScrollbar: =true
+        DelayItemLoading: =true
+        LoadingSpinner: =LoadingSpinner.Data
+        Visible: =Len(gblGlobalSearch) >= 2
+        # Six delegable queries, each shaped into the same result record and concatenated.
+        Items: |
+            =With(
+                { q: gblGlobalSearch },
+                Ungroup(
+                    Table(
+                        {
+                            R: ForAll(
+                                FirstN(Filter('01_ExportLCs', StartsWith(LCNumber, q) || StartsWith(OurReference, q) || StartsWith(CustomerName, q) || StartsWith(Title, q)), 20) As r,
+                                { Kind: "Export LC", Primary: r.LCNumber, Secondary: r.CustomerName & " · " & Money(r.LCAmount, r.CurrencyCode),
+                                  Tertiary: r.LCStatus & " · expires " & DateShort(r.ExpiryDate), LCId: r.ID, Tab: "Overview" }
+                            )
+                        },
+                        {
+                            R: ForAll(
+                                FirstN(Filter('03_Invoices', StartsWith(Title, q) || StartsWith(LCNumber, q) || StartsWith(CustomerName, q)), 20) As r,
+                                { Kind: "Invoice", Primary: r.Title, Secondary: r.CustomerName & " · " & Money(r.InvoiceAmount, r.CurrencyCode),
+                                  Tertiary: r.InvoiceStatus & " · due " & DateShort(r.DueDate), LCId: r.LCItemId, Tab: "Invoices" }
+                            )
+                        },
+                        {
+                            R: ForAll(
+                                FirstN(Filter('04_Shipments', StartsWith(Title, q) || StartsWith(TransportDocNumber, q) || StartsWith(LCNumber, q)), 20) As r,
+                                { Kind: "Shipment", Primary: r.Title, Secondary: Coalesce(r.TransportDocNumber, "no transport document"),
+                                  Tertiary: r.ShipmentStatus & " · latest " & DateShort(r.LatestShipmentDate), LCId: r.LCItemId, Tab: "Shipments" }
+                            )
+                        },
+                        {
+                            R: ForAll(
+                                FirstN(Filter('05_Presentations', StartsWith(Title, q) || StartsWith(LCNumber, q) || StartsWith(CourierTrackingNumber, q)), 20) As r,
+                                { Kind: "Presentation", Primary: r.Title, Secondary: r.CustomerName & " · " & Money(r.AmountPresented, r.CurrencyCode),
+                                  Tertiary: r.PresentationStatus & " · " & r.ExaminationStatus, LCId: r.LCItemId, Tab: "Presentations" }
+                            )
+                        },
+                        {
+                            R: ForAll(
+                                FirstN(Filter('06_Discrepancies', StartsWith(Title, q) || StartsWith(LCNumber, q) || StartsWith(PresentationRef, q)), 20) As r,
+                                { Kind: "Discrepancy", Primary: r.Title, Secondary: Coalesce(r.CategoryName, r.CategoryCode),
+                                  Tertiary: r.Severity & " · " & r.DiscrepancyStatus, LCId: r.LCItemId, Tab: "Discrepancies" }
+                            )
+                        },
+                        {
+                            R: ForAll(
+                                FirstN(Filter(ExportLCDocuments, StartsWith('Name', q) || StartsWith(LCNumber, q)), 20) As r,
+                                { Kind: "Document", Primary: r.'Name', Secondary: Coalesce(r.LCNumber, ""),
+                                  Tertiary: Coalesce(r.DocumentTypeCode, "") & " · " & Text(r.Modified, "dd mmm yyyy"), LCId: 0, Tab: "Documents" }
+                            )
+                        }
+                    ),
+                    R
+                )
+            )
+        OnSelect: |
+            =If(
+                ThisItem.LCId > 0,
+                (
+                    Set(gblCurrentLC, LookUp('01_ExportLCs', ID = ThisItem.LCId));
+                    Set(gblWorkspaceTab, ThisItem.Tab);
+                    Navigate(scrLCWorkspace, ScreenTransition.CoverRight)
+                ),
+                Navigate(scrDocuments, ScreenTransition.None)
+            )
+
+        recResBg As rectangle:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight - 1
+            Fill: =ThemeSurface
+
+        recResRule As rectangle:
+            X: =0
+            Y: =Parent.TemplateHeight - 1
+            Width: =Parent.TemplateWidth
+            Height: =1
+            Fill: =ThemeBorder
+
+        lblResKind As label:
+            X: =ThemeSpace4
+            Y: =0
+            Width: =110
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.Kind
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeTextMuted
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblResPrimary As label:
+            X: =130
+            Y: =4
+            Width: =Parent.TemplateWidth * 0.28
+            Height: =20
+            Text: =ThisItem.Primary
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeAccent
+            PaddingLeft: =0
+
+        lblResSecondary As label:
+            X: =130
+            Y: =23
+            Width: =Parent.TemplateWidth * 0.28
+            Height: =18
+            Text: =ThisItem.Secondary
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            PaddingLeft: =0
+
+        lblResTertiary As label:
+            X: =Parent.TemplateWidth * 0.28 + 150
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.40
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.Tertiary
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+    emptySearch As cmpEmptyState:
+        X: =ContentX
+        Y: =galResults.Y + 40
+        Width: =ContentWidth
+        Height: =200
+        Visible: =Len(gblGlobalSearch) >= 2 && IsEmpty(galResults.AllItems)
+        Title: ="Nothing found for '" & gblGlobalSearch & "'"
+        Body: |
+            ="Matching starts from the beginning of a value, so try the opening characters of an LC number, " &
+             "our reference or a customer name rather than a fragment from the middle."
+        ActionLabel: ="Open the LC register"
+        OnAction: |
+            =Set(gblFilter, PresetFilter("ALL", false));
+            Navigate(scrLCRegister, ScreenTransition.None)

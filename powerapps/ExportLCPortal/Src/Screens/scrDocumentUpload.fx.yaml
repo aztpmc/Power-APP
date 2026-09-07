@@ -1,0 +1,394 @@
+# =============================================================================
+# scrDocumentUpload - attach a document to a business record
+# =============================================================================
+# A file cannot be uploaded here without an LC and a document type. That is the whole
+# point: the difference between a document centre and a shared folder is that every file
+# arrives already attached to the record it belongs to.
+#
+# Routing is read from 15_DocumentTypes.TargetLibrary, so which of the four libraries a
+# file lands in is configuration, not code. The upload itself is done by FLOW-14, which
+# receives the file content and the metadata and writes both in one operation - the
+# Power Apps AddMedia control cannot set library metadata at the point of upload.
+#
+# On success the matching checklist line is marked received, which is what keeps
+# MissingDocumentCount and the workspace warning honest.
+# =============================================================================
+
+scrDocumentUpload As screen:
+    Fill: =ThemeCanvas
+    OnVisible: |
+        =Set(gblUploadDocType, Blank());
+        Set(gblUploadDate, Today0);
+        Set(gblUploadIsOriginal, false);
+        Set(gblUploadCopies, 1);
+        Set(gblUploadNotes, "");
+        Set(gblUploadFileName, "");
+        If(
+            !IsBlank(gblUploadContext) && !IsBlank(gblUploadContext.LCItemId),
+            Set(gblUploadLC, LookUp('01_ExportLCs', ID = gblUploadContext.LCItemId)),
+            Set(gblUploadLC, Blank())
+        )
+
+    navRail As cmpNavRail:
+        X: =0
+        Y: =0
+        Width: =RailWidth
+        Height: =Parent.Height
+        ActiveKey: ="DOCS"
+        UserName: =gblUserName
+        RoleLabel: |
+            =Switch(gblRole, "ADMIN", "Administrator", "MANAGER", "Treasury Manager",
+                "OFFICER", "Treasury Officer", "REVIEWER", "Reviewer", "Read only")
+        OnNavigate: |
+            =Switch(
+                gblNavSection,
+                "HOME",      Navigate(scrDashboard, ScreenTransition.None),
+                "LCS",       Navigate(scrLCRegister, ScreenTransition.None),
+                "INVOICES",  Navigate(scrInvoices, ScreenTransition.None),
+                "SHIPMENTS", Navigate(scrShipments, ScreenTransition.None),
+                "PRESENT",   Navigate(scrPresentations, ScreenTransition.None),
+                "DOCS",      Navigate(scrDocuments, ScreenTransition.None),
+                "DISCREP",   Navigate(scrDiscrepancies, ScreenTransition.None),
+                "PROCEEDS",  Navigate(scrProceeds, ScreenTransition.None),
+                "CORRESP",   Navigate(scrCorrespondence, ScreenTransition.None),
+                "TASKS",     Navigate(scrTasks, ScreenTransition.None),
+                "REPORTS",   Navigate(scrReports, ScreenTransition.None),
+                "ADMIN",     Navigate(scrAdmin, ScreenTransition.None)
+            )
+    topBar As cmpTopBar:
+        X: =ContentX
+        Y: =0
+        Width: =ContentWidth
+        Height: =ThemeTopBarHeight
+        TitleText: ="Upload document"
+        Breadcrumb: |
+            =Coalesce(gblUploadLC.LCNumber, "No LC selected") & "  /  Documents  /  Upload"
+        ShowSearch: =false
+        ShowBack: =true
+        OnBack: =Back()
+        ShowPrimary: =false
+
+    recForm As rectangle:
+        X: =ContentX
+        Y: =ThemeTopBarHeight + ThemeSpace3
+        Width: =Min(ContentWidth, 720)
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        Fill: =ThemeSurface
+        BorderColor: =ThemeBorder
+        BorderThickness: =1
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+
+    lblLCLabel As label:
+        X: =recForm.X + ThemeSpace5
+        Y: =recForm.Y + ThemeSpace4
+        Width: =300
+        Height: =18
+        Text: ="Letter of credit *"
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =ThemeTextSecondary
+        PaddingLeft: =0
+
+    cboUploadLC As combobox:
+        X: =lblLCLabel.X
+        Y: =lblLCLabel.Y + 20
+        Width: =400
+        Height: =34
+        Items: =SortByColumns(Filter('01_ExportLCs', IsClosed = false), "LCNumber", SortOrder.Ascending)
+        DisplayFields: =["LCNumber"]
+        SearchFields: =["LCNumber", "CustomerName", "OurReference"]
+        IsSearchable: =true
+        SelectMultiple: =false
+        InputTextPlaceholder: ="Select the LC this document belongs to"
+        DefaultSelectedItems: |
+            =If(IsBlank(gblUploadLC), Blank(), Table({ ID: gblUploadLC.ID, LCNumber: gblUploadLC.LCNumber }))
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        OnChange: =Set(gblUploadLC, Self.Selected)
+
+    lblTypeLabel As label:
+        X: =lblLCLabel.X
+        Y: =cboUploadLC.Y + 46
+        Width: =300
+        Height: =18
+        Text: ="Document type *"
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =ThemeTextSecondary
+        PaddingLeft: =0
+
+    cboUploadType As combobox:
+        X: =lblLCLabel.X
+        Y: =lblTypeLabel.Y + 20
+        Width: =400
+        Height: =34
+        # Offers the types this LC's checklist actually calls for first; the full master
+        # list is still searchable, so an unexpected document is never blocked.
+        Items: |
+            =SortByColumns(colDocTypes, "SortOrder", SortOrder.Ascending)
+        DisplayFields: =["Title"]
+        SearchFields: =["Title", "DocumentTypeCode"]
+        IsSearchable: =true
+        SelectMultiple: =false
+        InputTextPlaceholder: ="What kind of document is this?"
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        OnChange: |
+            =Set(gblUploadDocType, Self.Selected);
+            Set(gblUploadIsOriginal, Coalesce(Self.Selected.RequiresOriginal, false));
+            Set(gblUploadCopies, Coalesce(Self.Selected.DefaultCopies, 1))
+
+    lblRouting As label:
+        X: =lblLCLabel.X
+        Y: =cboUploadType.Y + 38
+        Width: =400
+        Height: =18
+        Text: |
+            =If(
+                IsBlank(gblUploadDocType), "",
+                "Will be filed in " & gblUploadDocType.TargetLibrary &
+                If(gblUploadDocType.RequiresReview, " and flagged for review.", ".")
+            )
+        Font: =ThemeFont
+        Size: =ThemeSizeMicro
+        Color: =ThemeAccent
+        PaddingLeft: =0
+
+    lblLinkLabel As label:
+        X: =lblLCLabel.X
+        Y: =lblRouting.Y + 28
+        Width: =300
+        Height: =18
+        Text: ="Link to a specific record (optional)"
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =ThemeTextSecondary
+        PaddingLeft: =0
+
+    txtLinkInvoice As text:
+        X: =lblLCLabel.X
+        Y: =lblLinkLabel.Y + 20
+        Width: =190
+        Height: =34
+        HintText: ="Invoice number"
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        BorderColor: =ThemeBorderStrong
+        BorderThickness: =1
+        RadiusTopLeft: =4
+        RadiusTopRight: =4
+        RadiusBottomLeft: =4
+        RadiusBottomRight: =4
+
+    txtLinkPresentation As text:
+        X: =txtLinkInvoice.X + 200
+        Y: =txtLinkInvoice.Y
+        Width: =190
+        Height: =34
+        HintText: ="Presentation number"
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        BorderColor: =ThemeBorderStrong
+        BorderThickness: =1
+        RadiusTopLeft: =4
+        RadiusTopRight: =4
+        RadiusBottomLeft: =4
+        RadiusBottomRight: =4
+
+    lblDocDateLabel As label:
+        X: =lblLCLabel.X
+        Y: =txtLinkInvoice.Y + 46
+        Width: =190
+        Height: =18
+        Text: ="Document date"
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =ThemeTextSecondary
+        PaddingLeft: =0
+
+    dpDocDate As datepicker:
+        X: =lblLCLabel.X
+        Y: =lblDocDateLabel.Y + 20
+        Width: =190
+        Height: =34
+        DefaultDate: =gblUploadDate
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        OnChange: =Set(gblUploadDate, Self.SelectedDate)
+
+    tglIsOriginal As toggle:
+        X: =lblLCLabel.X + 200
+        Y: =dpDocDate.Y + 4
+        Width: =90
+        Height: =28
+        Default: =gblUploadIsOriginal
+        OnChange: =Set(gblUploadIsOriginal, Self.Value)
+
+    lblIsOriginal As label:
+        X: =tglIsOriginal.X + 96
+        Y: =tglIsOriginal.Y
+        Width: =160
+        Height: =28
+        Text: =If(gblUploadIsOriginal, "Original received", "Copy only")
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        Color: =ThemeText
+        VerticalAlign: =VerticalAlign.Middle
+        PaddingLeft: =0
+
+    lblNotesLabel As label:
+        X: =lblLCLabel.X
+        Y: =dpDocDate.Y + 48
+        Width: =300
+        Height: =18
+        Text: ="Notes"
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =ThemeTextSecondary
+        PaddingLeft: =0
+
+    txtNotes As text:
+        X: =lblLCLabel.X
+        Y: =lblNotesLabel.Y + 20
+        Width: =400
+        Height: =60
+        Mode: =TextMode.MultiLine
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        BorderColor: =ThemeBorderStrong
+        BorderThickness: =1
+        OnChange: =Set(gblUploadNotes, Self.Value)
+
+    attFile As attachments:
+        X: =lblLCLabel.X
+        Y: =txtNotes.Y + 72
+        Width: =400
+        Height: =110
+        MaxAttachments: =1
+        DisplayMode: |
+            =If(IsBlank(gblUploadLC) || IsBlank(gblUploadDocType), DisplayMode.Disabled, DisplayMode.Edit)
+        OnAddFile: =Set(gblUploadFileName, Last(Self.Attachments).Name)
+        OnRemoveFile: =Set(gblUploadFileName, "")
+
+    lblAttHint As label:
+        X: =lblLCLabel.X
+        Y: =attFile.Y + 114
+        Width: =400
+        Height: =18
+        Text: |
+            =If(
+                IsBlank(gblUploadLC) || IsBlank(gblUploadDocType),
+                "Choose an LC and a document type before attaching the file.",
+                "Attach one file. It is uploaded with its metadata in a single operation."
+            )
+        Font: =ThemeFont
+        Size: =ThemeSizeMicro
+        Color: =ThemeTextMuted
+        PaddingLeft: =0
+
+    btnUpload As button:
+        X: =lblLCLabel.X
+        Y: =lblAttHint.Y + 30
+        Width: =180
+        Height: =36
+        Text: ="Upload document"
+        Fill: =ThemeAccent
+        HoverFill: =ThemeAccentHover
+        DisabledFill: =ThemeMutedSoft
+        Color: =ThemeTextInverse
+        DisabledColor: =ThemeTextMuted
+        BorderThickness: =0
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        FontWeight: =FontWeight.Semibold
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        DisplayMode: |
+            =If(
+                IsBlank(gblUploadLC) || IsBlank(gblUploadDocType) ||
+                IsEmpty(attFile.Attachments) || !IsOfficer,
+                DisplayMode.Disabled, DisplayMode.Edit
+            )
+        # The flow writes the file and its metadata together, updates the checklist line
+        # and writes the audit row. Doing it in one call means a half-filed document -
+        # a file with no metadata - cannot exist.
+        OnSelect: |
+            =Set(gblCorrelation, GUID());
+            Set(
+                gblUploadResult,
+                'ExportLC-14-UploadDocument'.Run(
+                    {
+                        internalLCID: gblUploadLC.Title,
+                        lcNumber: gblUploadLC.LCNumber,
+                        lcItemId: gblUploadLC.ID,
+                        targetLibrary: gblUploadDocType.TargetLibrary,
+                        documentTypeCode: gblUploadDocType.DocumentTypeCode,
+                        documentTypeName: gblUploadDocType.Title,
+                        invoiceNumber: txtLinkInvoice.Value,
+                        presentationNumber: txtLinkPresentation.Value,
+                        documentDate: Text(gblUploadDate, "yyyy-mm-dd"),
+                        isOriginal: gblUploadIsOriginal,
+                        copies: gblUploadCopies,
+                        notes: gblUploadNotes,
+                        requiresReview: gblUploadDocType.RequiresReview,
+                        fileName: Last(attFile.Attachments).Name,
+                        fileContent: Last(attFile.Attachments).Value,
+                        userEmail: User().Email,
+                        userName: User().FullName,
+                        correlationId: gblCorrelation
+                    }
+                )
+            );
+            If(
+                gblUploadResult.success,
+                (
+                    // Mark the checklist line received. Originals and copies are counted
+                    // separately because a credit that calls for three originals is not
+                    // satisfied by three photocopies.
+                    With(
+                        {
+                            line: LookUp(
+                                '20_LCDocumentChecklist',
+                                LCItemId = gblUploadLC.ID && DocumentTypeCode = gblUploadDocType.DocumentTypeCode
+                            )
+                        },
+                        If(
+                            !IsBlank(line),
+                            Patch(
+                                '20_LCDocumentChecklist', line,
+                                {
+                                    IsReceived: true,
+                                    ReceivedDate: Today0,
+                                    OriginalsReceived: line.OriginalsReceived + If(gblUploadIsOriginal, 1, 0),
+                                    CopiesReceived: line.CopiesReceived + If(gblUploadIsOriginal, 0, gblUploadCopies),
+                                    DocumentUrl: gblUploadResult.fileUrl,
+                                    ChecklistStatus: If(line.IsReviewed, "Complete", "Pending Review")
+                                }
+                            )
+                        )
+                    );
+                    With(
+                        {
+                            missing: CountRows(
+                                Filter('20_LCDocumentChecklist', LCItemId = gblUploadLC.ID, IsRequired = true, IsReceived = false)
+                            )
+                        },
+                        Patch(
+                            '01_ExportLCs',
+                            LookUp('01_ExportLCs', ID = gblUploadLC.ID),
+                            { MissingDocumentCount: missing, LastActivityDate: Now() }
+                        )
+                    );
+                    Notify("Uploaded and filed in " & gblUploadDocType.TargetLibrary & ".", NotificationType.Success, 4000);
+                    Back()
+                ),
+                Notify(
+                    "Upload failed: " & Coalesce(gblUploadResult.message, "no reason returned by the flow."),
+                    NotificationType.Error, 8000
+                )
+            )

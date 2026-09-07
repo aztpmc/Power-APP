@@ -1,0 +1,1466 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    },
+    "SiteUrl": {
+      "defaultValue": "https://CONTOSO.sharepoint.com/sites/ExportLCPortal",
+      "type": "String",
+      "metadata": {
+        "description": "Portal site collection URL. Set before enabling."
+      }
+    }
+  },
+  "triggers": {
+    "Hourly": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Hour",
+        "interval": 1
+      }
+    },
+    "When_the_portal_asks_for_a_refresh": {
+      "type": "Request",
+      "kind": "PowerApp",
+      "inputs": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "actions": {
+    "Metric_ACTIVE_LCS": {
+      "type": "Scope",
+      "actions": {
+        "Query_ACTIVE_LCS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "01_ExportLCs",
+              "$filter": "IsClosed eq 0",
+              "$top": 5000
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Find_row_ACTIVE_LCS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "$filter": "Title eq 'ACTIVE_LCS' and MetricScope eq 'ALL'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Query_ACTIVE_LCS": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_ACTIVE_LCS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "id": "@{first(body('Find_row_ACTIVE_LCS')?['value'])?['ID']}",
+              "item": {
+                "Title": "ACTIVE_LCS",
+                "MetricGroup": "Portfolio",
+                "MetricScope": "ALL",
+                "MetricCount": "@{length(body('Query_ACTIVE_LCS')?['value'])}",
+                "MetricAmount": "@{if(empty(body('Query_ACTIVE_LCS')?['value']), 0, sum(select(body('Query_ACTIVE_LCS')?['value'], coalesce(item()?['OutstandingAmount'], 0))))}",
+                "MetricCurrency": "USD",
+                "MetricLabel": "Active LCs",
+                "MetricSubLabel": "Open credits on the book",
+                "DrillTarget": "ACTIVE",
+                "IsUrgent": false,
+                "SortOrder": 10,
+                "ComputedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Find_row_ACTIVE_LCS": [
+              "Succeeded"
+            ]
+          }
+        }
+      }
+    },
+    "Metric_NEW_LCS": {
+      "type": "Scope",
+      "actions": {
+        "Query_NEW_LCS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "01_ExportLCs",
+              "$filter": "ReceivedDate ge '@{formatDateTime(addDays(utcNow(),-30),'yyyy-MM-dd')}T00:00:00Z'",
+              "$top": 5000
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Find_row_NEW_LCS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "$filter": "Title eq 'NEW_LCS' and MetricScope eq 'ALL'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Query_NEW_LCS": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_NEW_LCS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "id": "@{first(body('Find_row_NEW_LCS')?['value'])?['ID']}",
+              "item": {
+                "Title": "NEW_LCS",
+                "MetricGroup": "Portfolio",
+                "MetricScope": "ALL",
+                "MetricCount": "@{length(body('Query_NEW_LCS')?['value'])}",
+                "MetricAmount": "@{if(empty(body('Query_NEW_LCS')?['value']), 0, sum(select(body('Query_NEW_LCS')?['value'], coalesce(item()?['LCAmount'], 0))))}",
+                "MetricCurrency": "USD",
+                "MetricLabel": "New LCs",
+                "MetricSubLabel": "Received in the last 30 days",
+                "DrillTarget": "NEW",
+                "IsUrgent": false,
+                "SortOrder": 20,
+                "ComputedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Find_row_NEW_LCS": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Metric_ACTIVE_LCS": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "Metric_PENDING_ACTION": {
+      "type": "Scope",
+      "actions": {
+        "Query_PENDING_ACTION": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "01_ExportLCs",
+              "$filter": "IsClosed eq 0 and RequiresAction eq 1",
+              "$top": 5000
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Find_row_PENDING_ACTION": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "$filter": "Title eq 'PENDING_ACTION' and MetricScope eq 'ALL'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Query_PENDING_ACTION": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_PENDING_ACTION": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "id": "@{first(body('Find_row_PENDING_ACTION')?['value'])?['ID']}",
+              "item": {
+                "Title": "PENDING_ACTION",
+                "MetricGroup": "Portfolio",
+                "MetricScope": "ALL",
+                "MetricCount": "@{length(body('Query_PENDING_ACTION')?['value'])}",
+                "MetricAmount": "@{if(empty(body('Query_PENDING_ACTION')?['value']), 0, sum(select(body('Query_PENDING_ACTION')?['value'], coalesce(item()?['OutstandingAmount'], 0))))}",
+                "MetricCurrency": "USD",
+                "MetricLabel": "Pending Action",
+                "MetricSubLabel": "Needs an officer's attention",
+                "DrillTarget": "PENDING_ACTION",
+                "IsUrgent": false,
+                "SortOrder": 30,
+                "ComputedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Find_row_PENDING_ACTION": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Metric_NEW_LCS": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "Metric_EXPIRING_SOON": {
+      "type": "Scope",
+      "actions": {
+        "Query_EXPIRING_SOON": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "01_ExportLCs",
+              "$filter": "IsClosed eq 0 and ExpiryDate ge '@{formatDateTime(utcNow(),'yyyy-MM-dd')}T00:00:00Z' and ExpiryDate le '@{formatDateTime(addDays(utcNow(),30),'yyyy-MM-dd')}T23:59:59Z'",
+              "$top": 5000
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Find_row_EXPIRING_SOON": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "$filter": "Title eq 'EXPIRING_SOON' and MetricScope eq 'ALL'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Query_EXPIRING_SOON": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_EXPIRING_SOON": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "id": "@{first(body('Find_row_EXPIRING_SOON')?['value'])?['ID']}",
+              "item": {
+                "Title": "EXPIRING_SOON",
+                "MetricGroup": "Deadlines",
+                "MetricScope": "ALL",
+                "MetricCount": "@{length(body('Query_EXPIRING_SOON')?['value'])}",
+                "MetricAmount": "@{if(empty(body('Query_EXPIRING_SOON')?['value']), 0, sum(select(body('Query_EXPIRING_SOON')?['value'], coalesce(item()?['OutstandingAmount'], 0))))}",
+                "MetricCurrency": "USD",
+                "MetricLabel": "Expiring Soon",
+                "MetricSubLabel": "Within 30 days",
+                "DrillTarget": "EXPIRING_SOON",
+                "IsUrgent": true,
+                "SortOrder": 40,
+                "ComputedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Find_row_EXPIRING_SOON": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Metric_PENDING_ACTION": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "Metric_EXPIRED": {
+      "type": "Scope",
+      "actions": {
+        "Query_EXPIRED": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "01_ExportLCs",
+              "$filter": "IsClosed eq 0 and ExpiryDate lt '@{formatDateTime(utcNow(),'yyyy-MM-dd')}T00:00:00Z'",
+              "$top": 5000
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Find_row_EXPIRED": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "$filter": "Title eq 'EXPIRED' and MetricScope eq 'ALL'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Query_EXPIRED": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_EXPIRED": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "id": "@{first(body('Find_row_EXPIRED')?['value'])?['ID']}",
+              "item": {
+                "Title": "EXPIRED",
+                "MetricGroup": "Deadlines",
+                "MetricScope": "ALL",
+                "MetricCount": "@{length(body('Query_EXPIRED')?['value'])}",
+                "MetricAmount": "@{if(empty(body('Query_EXPIRED')?['value']), 0, sum(select(body('Query_EXPIRED')?['value'], coalesce(item()?['OutstandingAmount'], 0))))}",
+                "MetricCurrency": "USD",
+                "MetricLabel": "Expired",
+                "MetricSubLabel": "Past expiry and still open",
+                "DrillTarget": "EXPIRED",
+                "IsUrgent": true,
+                "SortOrder": 50,
+                "ComputedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Find_row_EXPIRED": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Metric_EXPIRING_SOON": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "Metric_SHIPMENT_SOON": {
+      "type": "Scope",
+      "actions": {
+        "Query_SHIPMENT_SOON": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "01_ExportLCs",
+              "$filter": "IsClosed eq 0 and LatestShipmentDate ge '@{formatDateTime(utcNow(),'yyyy-MM-dd')}T00:00:00Z' and LatestShipmentDate le '@{formatDateTime(addDays(utcNow(),14),'yyyy-MM-dd')}T23:59:59Z'",
+              "$top": 5000
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Find_row_SHIPMENT_SOON": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "$filter": "Title eq 'SHIPMENT_SOON' and MetricScope eq 'ALL'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Query_SHIPMENT_SOON": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_SHIPMENT_SOON": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "id": "@{first(body('Find_row_SHIPMENT_SOON')?['value'])?['ID']}",
+              "item": {
+                "Title": "SHIPMENT_SOON",
+                "MetricGroup": "Deadlines",
+                "MetricScope": "ALL",
+                "MetricCount": "@{length(body('Query_SHIPMENT_SOON')?['value'])}",
+                "MetricAmount": "@{if(empty(body('Query_SHIPMENT_SOON')?['value']), 0, sum(select(body('Query_SHIPMENT_SOON')?['value'], coalesce(item()?['OutstandingAmount'], 0))))}",
+                "MetricCurrency": "USD",
+                "MetricLabel": "Shipment Deadline",
+                "MetricSubLabel": "Within 14 days",
+                "DrillTarget": "SHIPMENT_SOON",
+                "IsUrgent": true,
+                "SortOrder": 60,
+                "ComputedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Find_row_SHIPMENT_SOON": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Metric_EXPIRED": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "Metric_SHIPMENT_OVERDUE": {
+      "type": "Scope",
+      "actions": {
+        "Query_SHIPMENT_OVERDUE": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "01_ExportLCs",
+              "$filter": "IsClosed eq 0 and LatestShipmentDate lt '@{formatDateTime(utcNow(),'yyyy-MM-dd')}T00:00:00Z'",
+              "$top": 5000
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Find_row_SHIPMENT_OVERDUE": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "$filter": "Title eq 'SHIPMENT_OVERDUE' and MetricScope eq 'ALL'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Query_SHIPMENT_OVERDUE": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_SHIPMENT_OVERDUE": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "id": "@{first(body('Find_row_SHIPMENT_OVERDUE')?['value'])?['ID']}",
+              "item": {
+                "Title": "SHIPMENT_OVERDUE",
+                "MetricGroup": "Deadlines",
+                "MetricScope": "ALL",
+                "MetricCount": "@{length(body('Query_SHIPMENT_OVERDUE')?['value'])}",
+                "MetricAmount": "@{if(empty(body('Query_SHIPMENT_OVERDUE')?['value']), 0, sum(select(body('Query_SHIPMENT_OVERDUE')?['value'], coalesce(item()?['OutstandingAmount'], 0))))}",
+                "MetricCurrency": "USD",
+                "MetricLabel": "Shipment Overdue",
+                "MetricSubLabel": "Past latest shipment date",
+                "DrillTarget": "SHIPMENT_OVERDUE",
+                "IsUrgent": true,
+                "SortOrder": 70,
+                "ComputedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Find_row_SHIPMENT_OVERDUE": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Metric_SHIPMENT_SOON": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "Metric_PENDING_AMENDMENTS": {
+      "type": "Scope",
+      "actions": {
+        "Query_PENDING_AMENDMENTS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "02_LCAmendments",
+              "$filter": "AppliedToLC eq 0",
+              "$top": 5000
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Find_row_PENDING_AMENDMENTS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "$filter": "Title eq 'PENDING_AMENDMENTS' and MetricScope eq 'ALL'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Query_PENDING_AMENDMENTS": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_PENDING_AMENDMENTS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "id": "@{first(body('Find_row_PENDING_AMENDMENTS')?['value'])?['ID']}",
+              "item": {
+                "Title": "PENDING_AMENDMENTS",
+                "MetricGroup": "Portfolio",
+                "MetricScope": "ALL",
+                "MetricCount": "@{length(body('Query_PENDING_AMENDMENTS')?['value'])}",
+                "MetricAmount": 0,
+                "MetricCurrency": "USD",
+                "MetricLabel": "Pending Amendments",
+                "MetricSubLabel": "Not yet applied to the LC",
+                "DrillTarget": "PENDING_AMENDMENTS",
+                "IsUrgent": false,
+                "SortOrder": 80,
+                "ComputedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Find_row_PENDING_AMENDMENTS": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Metric_SHIPMENT_OVERDUE": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "Metric_MISSING_DOCS": {
+      "type": "Scope",
+      "actions": {
+        "Query_MISSING_DOCS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "01_ExportLCs",
+              "$filter": "IsClosed eq 0 and MissingDocumentCount gt 0",
+              "$top": 5000
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Find_row_MISSING_DOCS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "$filter": "Title eq 'MISSING_DOCS' and MetricScope eq 'ALL'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Query_MISSING_DOCS": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_MISSING_DOCS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "id": "@{first(body('Find_row_MISSING_DOCS')?['value'])?['ID']}",
+              "item": {
+                "Title": "MISSING_DOCS",
+                "MetricGroup": "Documents",
+                "MetricScope": "ALL",
+                "MetricCount": "@{length(body('Query_MISSING_DOCS')?['value'])}",
+                "MetricAmount": 0,
+                "MetricCurrency": "USD",
+                "MetricLabel": "Missing Documents",
+                "MetricSubLabel": "LCs with documents outstanding",
+                "DrillTarget": "MISSING_DOCS",
+                "IsUrgent": false,
+                "SortOrder": 90,
+                "ComputedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Find_row_MISSING_DOCS": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Metric_PENDING_AMENDMENTS": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "Metric_PENDING_PRESENTATIONS": {
+      "type": "Scope",
+      "actions": {
+        "Query_PENDING_PRESENTATIONS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "05_Presentations",
+              "$filter": "IsClosed eq 0 and PresentationStatus ne 'Presented'",
+              "$top": 5000
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Find_row_PENDING_PRESENTATIONS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "$filter": "Title eq 'PENDING_PRESENTATIONS' and MetricScope eq 'ALL'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Query_PENDING_PRESENTATIONS": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_PENDING_PRESENTATIONS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "id": "@{first(body('Find_row_PENDING_PRESENTATIONS')?['value'])?['ID']}",
+              "item": {
+                "Title": "PENDING_PRESENTATIONS",
+                "MetricGroup": "Presentations",
+                "MetricScope": "ALL",
+                "MetricCount": "@{length(body('Query_PENDING_PRESENTATIONS')?['value'])}",
+                "MetricAmount": "@{if(empty(body('Query_PENDING_PRESENTATIONS')?['value']), 0, sum(select(body('Query_PENDING_PRESENTATIONS')?['value'], coalesce(item()?['AmountPresented'], 0))))}",
+                "MetricCurrency": "USD",
+                "MetricLabel": "Pending Presentations",
+                "MetricSubLabel": "Draft or ready to present",
+                "DrillTarget": "PENDING_PRESENTATIONS",
+                "IsUrgent": false,
+                "SortOrder": 100,
+                "ComputedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Find_row_PENDING_PRESENTATIONS": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Metric_MISSING_DOCS": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "Metric_OPEN_DISCREPANCIES": {
+      "type": "Scope",
+      "actions": {
+        "Query_OPEN_DISCREPANCIES": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "06_Discrepancies",
+              "$filter": "IsOpen eq 1",
+              "$top": 5000
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Find_row_OPEN_DISCREPANCIES": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "$filter": "Title eq 'OPEN_DISCREPANCIES' and MetricScope eq 'ALL'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Query_OPEN_DISCREPANCIES": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_OPEN_DISCREPANCIES": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "id": "@{first(body('Find_row_OPEN_DISCREPANCIES')?['value'])?['ID']}",
+              "item": {
+                "Title": "OPEN_DISCREPANCIES",
+                "MetricGroup": "Discrepancies",
+                "MetricScope": "ALL",
+                "MetricCount": "@{length(body('Query_OPEN_DISCREPANCIES')?['value'])}",
+                "MetricAmount": 0,
+                "MetricCurrency": "USD",
+                "MetricLabel": "Open Discrepancies",
+                "MetricSubLabel": "Unresolved bank findings",
+                "DrillTarget": "OPEN_DISCREPANCIES",
+                "IsUrgent": true,
+                "SortOrder": 110,
+                "ComputedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Find_row_OPEN_DISCREPANCIES": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Metric_PENDING_PRESENTATIONS": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "Metric_OUTSTANDING_PROCEEDS": {
+      "type": "Scope",
+      "actions": {
+        "Query_OUTSTANDING_PROCEEDS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "07_Proceeds",
+              "$filter": "IsSettled eq 0",
+              "$top": 5000
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Find_row_OUTSTANDING_PROCEEDS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "$filter": "Title eq 'OUTSTANDING_PROCEEDS' and MetricScope eq 'ALL'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Query_OUTSTANDING_PROCEEDS": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_OUTSTANDING_PROCEEDS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "id": "@{first(body('Find_row_OUTSTANDING_PROCEEDS')?['value'])?['ID']}",
+              "item": {
+                "Title": "OUTSTANDING_PROCEEDS",
+                "MetricGroup": "Proceeds",
+                "MetricScope": "ALL",
+                "MetricCount": "@{length(body('Query_OUTSTANDING_PROCEEDS')?['value'])}",
+                "MetricAmount": "@{if(empty(body('Query_OUTSTANDING_PROCEEDS')?['value']), 0, sum(select(body('Query_OUTSTANDING_PROCEEDS')?['value'], coalesce(item()?['OutstandingProceeds'], 0))))}",
+                "MetricCurrency": "USD",
+                "MetricLabel": "Outstanding Proceeds",
+                "MetricSubLabel": "Accepted but not received",
+                "DrillTarget": "OUTSTANDING_PROCEEDS",
+                "IsUrgent": false,
+                "SortOrder": 120,
+                "ComputedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Find_row_OUTSTANDING_PROCEEDS": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Metric_OPEN_DISCREPANCIES": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "Metric_PROCEEDS_OVERDUE": {
+      "type": "Scope",
+      "actions": {
+        "Query_PROCEEDS_OVERDUE": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "07_Proceeds",
+              "$filter": "IsSettled eq 0 and MaturityDate lt '@{formatDateTime(utcNow(),'yyyy-MM-dd')}T00:00:00Z'",
+              "$top": 5000
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Find_row_PROCEEDS_OVERDUE": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "$filter": "Title eq 'PROCEEDS_OVERDUE' and MetricScope eq 'ALL'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Query_PROCEEDS_OVERDUE": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_PROCEEDS_OVERDUE": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "id": "@{first(body('Find_row_PROCEEDS_OVERDUE')?['value'])?['ID']}",
+              "item": {
+                "Title": "PROCEEDS_OVERDUE",
+                "MetricGroup": "Proceeds",
+                "MetricScope": "ALL",
+                "MetricCount": "@{length(body('Query_PROCEEDS_OVERDUE')?['value'])}",
+                "MetricAmount": "@{if(empty(body('Query_PROCEEDS_OVERDUE')?['value']), 0, sum(select(body('Query_PROCEEDS_OVERDUE')?['value'], coalesce(item()?['OutstandingProceeds'], 0))))}",
+                "MetricCurrency": "USD",
+                "MetricLabel": "Proceeds Overdue",
+                "MetricSubLabel": "Past maturity and unpaid",
+                "DrillTarget": "PROCEEDS_OVERDUE",
+                "IsUrgent": true,
+                "SortOrder": 130,
+                "ComputedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Find_row_PROCEEDS_OVERDUE": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Metric_OUTSTANDING_PROCEEDS": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "Metric_OVERDUE_TASKS": {
+      "type": "Scope",
+      "actions": {
+        "Query_OVERDUE_TASKS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "09_Tasks",
+              "$filter": "IsOpen eq 1 and DueDate lt '@{formatDateTime(utcNow(),'yyyy-MM-dd')}T00:00:00Z'",
+              "$top": 5000
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Find_row_OVERDUE_TASKS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "$filter": "Title eq 'OVERDUE_TASKS' and MetricScope eq 'ALL'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Query_OVERDUE_TASKS": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_OVERDUE_TASKS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "id": "@{first(body('Find_row_OVERDUE_TASKS')?['value'])?['ID']}",
+              "item": {
+                "Title": "OVERDUE_TASKS",
+                "MetricGroup": "Tasks",
+                "MetricScope": "ALL",
+                "MetricCount": "@{length(body('Query_OVERDUE_TASKS')?['value'])}",
+                "MetricAmount": 0,
+                "MetricCurrency": "USD",
+                "MetricLabel": "Overdue Tasks",
+                "MetricSubLabel": "Past their due date",
+                "DrillTarget": "OVERDUE_TASKS",
+                "IsUrgent": true,
+                "SortOrder": 140,
+                "ComputedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Find_row_OVERDUE_TASKS": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Metric_PROCEEDS_OVERDUE": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "Metric_DUE_TODAY_TASKS": {
+      "type": "Scope",
+      "actions": {
+        "Query_DUE_TODAY_TASKS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "09_Tasks",
+              "$filter": "IsOpen eq 1 and DueDate ge '@{formatDateTime(utcNow(),'yyyy-MM-dd')}T00:00:00Z' and DueDate le '@{formatDateTime(utcNow(),'yyyy-MM-dd')}T23:59:59Z'",
+              "$top": 5000
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Find_row_DUE_TODAY_TASKS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "$filter": "Title eq 'DUE_TODAY_TASKS' and MetricScope eq 'ALL'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Query_DUE_TODAY_TASKS": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_DUE_TODAY_TASKS": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "29_DashboardMetrics",
+              "id": "@{first(body('Find_row_DUE_TODAY_TASKS')?['value'])?['ID']}",
+              "item": {
+                "Title": "DUE_TODAY_TASKS",
+                "MetricGroup": "Tasks",
+                "MetricScope": "ALL",
+                "MetricCount": "@{length(body('Query_DUE_TODAY_TASKS')?['value'])}",
+                "MetricAmount": 0,
+                "MetricCurrency": "USD",
+                "MetricLabel": "Tasks Due Today",
+                "MetricSubLabel": "Due today across the team",
+                "DrillTarget": "TASKS_TODAY",
+                "IsUrgent": false,
+                "SortOrder": 150,
+                "ComputedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Find_row_DUE_TODAY_TASKS": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Metric_OVERDUE_TASKS": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    }
+  },
+  "outputs": {}
+}

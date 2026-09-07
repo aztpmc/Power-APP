@@ -1,0 +1,51 @@
+{
+  "properties": {
+    "packageSchemaVersion": "1.0",
+    "details": {
+      "displayName": "Recompute dashboard metrics",
+      "description": "Recomputes every dashboard KPI server-side. Runs hourly and on demand from the portal.",
+      "createdTime": "2026-01-01T00:00:00Z",
+      "packageTelemetryId": "ExportLC-11-RecomputeDashboardMetrics"
+    },
+    "resources": {
+      "FLOW": {
+        "id": "/providers/Microsoft.Flow/flows/00000000-0000-0000-0000-000000000000",
+        "name": "ExportLC-11-RecomputeDashboardMetrics",
+        "type": "Microsoft.Flow/flows",
+        "suggestedCreationType": "New",
+        "creationType": "New, Existing, Update",
+        "details": {
+          "displayName": "Recompute dashboard metrics"
+        },
+        "configurableBy": "User",
+        "hierarchy": "Root",
+        "dependsOn": [
+          "SHAREPOINT_CONNECTION",
+          "OUTLOOK_CONNECTION"
+        ]
+      },
+      "SHAREPOINT_CONNECTION": {
+        "type": "Microsoft.PowerApps/apis/connections",
+        "suggestedCreationType": "Existing",
+        "creationType": "Existing",
+        "details": {
+          "displayName": "SharePoint"
+        },
+        "configurableBy": "User",
+        "hierarchy": "Child",
+        "dependsOn": []
+      },
+      "OUTLOOK_CONNECTION": {
+        "type": "Microsoft.PowerApps/apis/connections",
+        "suggestedCreationType": "Existing",
+        "creationType": "Existing",
+        "details": {
+          "displayName": "Office 365 Outlook"
+        },
+        "configurableBy": "User",
+        "hierarchy": "Child",
+        "dependsOn": []
+      }
+    }
+  }
+}

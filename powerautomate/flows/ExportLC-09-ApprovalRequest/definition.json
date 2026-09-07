@@ -1,0 +1,237 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    },
+    "SiteUrl": {
+      "defaultValue": "https://CONTOSO.sharepoint.com/sites/ExportLCPortal",
+      "type": "String",
+      "metadata": {
+        "description": "Portal site collection URL. Set before enabling."
+      }
+    }
+  },
+  "triggers": {
+    "When_the_portal_calls_this_flow": {
+      "type": "Request",
+      "kind": "PowerApp",
+      "inputs": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "entityName": {
+              "type": "string",
+              "title": "Entity",
+              "description": "ExportLC, Amendment or Proceeds"
+            },
+            "recordId": {
+              "type": "integer",
+              "title": "Record item ID"
+            },
+            "recordReference": {
+              "type": "string",
+              "title": "Record reference"
+            },
+            "internalLCID": {
+              "type": "string"
+            },
+            "lcNumber": {
+              "type": "string"
+            },
+            "requestType": {
+              "type": "string",
+              "title": "What is being approved"
+            },
+            "amount": {
+              "type": "number"
+            },
+            "currencyCode": {
+              "type": "string"
+            },
+            "justification": {
+              "type": "string"
+            },
+            "requestedByEmail": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "entityName",
+            "recordId",
+            "requestType",
+            "requestedByEmail"
+          ]
+        }
+      }
+    }
+  },
+  "actions": {
+    "Find_approver_by_limit": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "17_Users",
+          "$filter": "IsActive eq 1 and RoleCode eq 'MANAGER' and ApprovalLimit ge @{coalesce(triggerBody()?['amount'], 0)}",
+          "$top": 10,
+          "$orderby": "ApprovalLimit asc"
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      }
+    },
+    "Fallback_approver": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "18_WorkflowConfig",
+          "$filter": "Title eq 'EscalationManagerEmail'",
+          "$top": 1
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      },
+      "runAfter": {
+        "Find_approver_by_limit": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Approver_email": {
+      "type": "Compose",
+      "inputs": "@{coalesce(first(body('Find_approver_by_limit')?['value'])?['UserEmail'], first(body('Fallback_approver')?['value'])?['ConfigValue'], '')}",
+      "runAfter": {
+        "Fallback_approver": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "comment": "The smallest approval limit that still covers the amount, so a routine request does not go straight to the top."
+      }
+    },
+    "Start_approval": {
+      "type": "OpenApiConnectionWebhook",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_approvals",
+          "operationId": "StartAndWaitForAnApproval",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals"
+        },
+        "parameters": {
+          "approvalType": "Basic",
+          "ApprovalCreationInput/title": "@{triggerBody()?['requestType']} - @{triggerBody()?['recordReference']}",
+          "ApprovalCreationInput/assignedTo": "@{outputs('Approver_email')}",
+          "ApprovalCreationInput/details": "Request: @{triggerBody()?['requestType']}\nRecord: @{triggerBody()?['entityName']} @{triggerBody()?['recordReference']}\nLC: @{coalesce(triggerBody()?['lcNumber'],'')}\nAmount: @{coalesce(triggerBody()?['currencyCode'],'')} @{coalesce(string(triggerBody()?['amount']),'')}\nRequested by: @{triggerBody()?['requestedByEmail']}\n\n@{coalesce(triggerBody()?['justification'],'')}",
+          "ApprovalCreationInput/requestor": "@{triggerBody()?['requestedByEmail']}",
+          "ApprovalCreationInput/enableNotifications": true,
+          "ApprovalCreationInput/enableReassignment": true
+        },
+        "authentication": "@parameters('$connections')['shared_approvals']['authentication']"
+      },
+      "runAfter": {
+        "Approver_email": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Record_decision": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "PostItem",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "10_AuditLog",
+          "item": {
+            "Title": "@{triggerBody()?['entityName']}:@{triggerBody()?['recordReference']}:Approval",
+            "EntityName": "@{triggerBody()?['entityName']}",
+            "RecordItemId": "@{triggerBody()?['recordId']}",
+            "RecordReference": "@{triggerBody()?['recordReference']}",
+            "InternalLCID": "@{coalesce(triggerBody()?['internalLCID'],'')}",
+            "LCNumber": "@{coalesce(triggerBody()?['lcNumber'],'')}",
+            "ActionType": "Approval Decision",
+            "FieldName": "@{triggerBody()?['requestType']}",
+            "OldValue": "Pending",
+            "NewValue": "@{outputs('Start_approval')?['body/outcome']}",
+            "IsCriticalField": true,
+            "ActionByEmail": "@{outputs('Approver_email')}",
+            "ActionByName": "@{outputs('Approver_email')}",
+            "ActionTimestamp": "@{utcNow()}",
+            "ActionSource": "Power Automate",
+            "ActionComment": "@{coalesce(outputs('Start_approval')?['body/responses'][0]['comments'], 'no comment')}",
+            "CorrelationId": "@{workflow()['run']['name']}",
+            "PartitionKey": "@{formatDateTime(utcNow(), 'yyyy-MM')}"
+          }
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runAfter": {
+        "Start_approval": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Respond_to_the_app": {
+      "type": "Response",
+      "kind": "PowerApp",
+      "inputs": {
+        "statusCode": 200,
+        "body": {
+          "outcome": "@{outputs('Start_approval')?['body/outcome']}",
+          "approver": "@{outputs('Approver_email')}",
+          "comments": "@{coalesce(outputs('Start_approval')?['body/responses'][0]['comments'], '')}"
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "outcome": {
+              "type": "string"
+            },
+            "approver": {
+              "type": "string"
+            },
+            "comments": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "Record_decision": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    }
+  },
+  "outputs": {}
+}

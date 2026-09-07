@@ -1,0 +1,27 @@
+Title,TemplateCode,AppliesToLCType,AppliesToCountry,AppliesToCustomerCode,AppliesToIncoterm,DocumentTypeCode,DocumentTypeName,IsRequired,RequiredOriginals,RequiredCopies,RequiresReview,Specificity,IsActive,SortOrder
+Base - Commercial Invoice,BASE,,,,,CINV,Commercial Invoice,TRUE,3,3,TRUE,0,TRUE,10
+Base - Packing List,BASE,,,,,PKGL,Packing List,TRUE,3,3,TRUE,0,TRUE,20
+Base - Bill of Lading,BASE,,,,,BL,Bill of Lading,TRUE,3,3,TRUE,0,TRUE,30
+Base - Certificate of Origin,BASE,,,,,COO,Certificate of Origin,TRUE,1,2,TRUE,0,TRUE,40
+Base - Beneficiary Certificate,BASE,,,,,BENC,Beneficiary Certificate,TRUE,1,1,TRUE,0,TRUE,50
+Base - Presentation Cover Letter,BASE,,,,,PRESCL,Presentation Cover Letter,TRUE,1,1,FALSE,0,TRUE,60
+Base - Certificate of Analysis,BASE,,,,,COA,Certificate of Analysis,TRUE,1,2,TRUE,0,TRUE,70
+CIF - Insurance Certificate,INCO-CIF,,,,CIF,INSC,Insurance Certificate,TRUE,2,2,TRUE,1,TRUE,80
+CIP - Insurance Certificate,INCO-CIP,,,,CIP,INSC,Insurance Certificate,TRUE,2,2,TRUE,1,TRUE,90
+Air - Air Waybill,MODE-AIR,,,,,AWB,Air Waybill,FALSE,3,3,TRUE,0,TRUE,100
+Libya - Legalised Invoice,CTY-LY,,Libya,,,CINV,Commercial Invoice,TRUE,3,3,TRUE,1,TRUE,110
+Libya - Legalised Certificate of Origin,CTY-LY,,Libya,,,COO,Certificate of Origin,TRUE,2,2,TRUE,1,TRUE,120
+Libya - Health Certificate,CTY-LY,,Libya,,,HLTH,Health Certificate,TRUE,1,2,TRUE,1,TRUE,130
+Libya - Free Sale Certificate,CTY-LY,,Libya,,,FSC,Free Sale Certificate,TRUE,1,2,TRUE,1,TRUE,140
+Iraq - Certificate of Analysis,CTY-IQ,,Iraq,,,COA,Certificate of Analysis,TRUE,2,2,TRUE,1,TRUE,150
+Iraq - GMP Certificate,CTY-IQ,,Iraq,,,GMP,GMP Certificate,TRUE,1,1,TRUE,1,TRUE,160
+Iraq - Inspection Certificate,CTY-IQ,,Iraq,,,INSP,Inspection Certificate,TRUE,1,1,TRUE,1,TRUE,170
+Ethiopia - Certificate of Analysis,CTY-ET,,Ethiopia,,,COA,Certificate of Analysis,TRUE,2,2,TRUE,1,TRUE,180
+Ethiopia - Health Certificate,CTY-ET,,Ethiopia,,,HLTH,Health Certificate,TRUE,1,1,TRUE,1,TRUE,190
+Ethiopia - Free Sale Certificate,CTY-ET,,Ethiopia,,,FSC,Free Sale Certificate,TRUE,1,1,TRUE,1,TRUE,200
+Morocco - Legalised Certificate of Origin,CTY-MA,,Morocco,,,COO,Certificate of Origin,TRUE,2,2,TRUE,1,TRUE,210
+Morocco - GMP Certificate,CTY-MA,,Morocco,,,GMP,GMP Certificate,TRUE,1,1,TRUE,1,TRUE,220
+Oman - Certificate of Analysis,CTY-OM,,Oman,,,COA,Certificate of Analysis,TRUE,1,2,TRUE,1,TRUE,230
+Oman - Health Certificate,CTY-OM,,Oman,,,HLTH,Health Certificate,FALSE,1,1,TRUE,1,TRUE,240
+Acceptance LC - Bill of Exchange,LCT-IRRACC,IRRACC,,,,DRAFT,Bill of Exchange / Draft,TRUE,1,1,TRUE,1,TRUE,250
+Negotiation LC - Bill of Exchange,LCT-IRRNEG,IRRNEG,,,,DRAFT,Bill of Exchange / Draft,TRUE,1,1,TRUE,1,TRUE,260

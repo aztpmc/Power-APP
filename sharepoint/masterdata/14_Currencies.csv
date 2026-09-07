@@ -1,0 +1,15 @@
+﻿Title,CurrencyName,CurrencySymbol,DecimalPlaces,RateToUSD,IsActive,SortOrder
+USD,US Dollar,$,2,1,TRUE,10
+EUR,Euro,€,2,,FALSE,100
+SAR,Saudi Riyal,,2,0.266667,FALSE,100
+AED,UAE Dirham,,2,0.272294,FALSE,100
+GBP,Pound Sterling,£,2,,FALSE,100
+CHF,Swiss Franc,,2,,FALSE,100
+JPY,Japanese Yen,¥,0,,FALSE,100
+OMR,Omani Rial,,3,2.6008,FALSE,100
+KWD,Kuwaiti Dinar,,3,,FALSE,100
+BHD,Bahraini Dinar,,3,2.6525,FALSE,100
+QAR,Qatari Riyal,,2,0.274725,FALSE,100
+EGP,Egyptian Pound,,2,,FALSE,100
+MAD,Moroccan Dirham,,2,,FALSE,100
+ETB,Ethiopian Birr,,2,,FALSE,100

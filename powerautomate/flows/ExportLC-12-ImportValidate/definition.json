@@ -1,0 +1,340 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    },
+    "SiteUrl": {
+      "defaultValue": "https://CONTOSO.sharepoint.com/sites/ExportLCPortal",
+      "type": "String",
+      "metadata": {
+        "description": "Portal site collection URL. Set before enabling."
+      }
+    }
+  },
+  "triggers": {
+    "When_the_portal_calls_this_flow": {
+      "type": "Request",
+      "kind": "PowerApp",
+      "inputs": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "batchId": {
+              "type": "string",
+              "title": "Import batch id"
+            }
+          },
+          "required": [
+            "batchId"
+          ]
+        }
+      }
+    }
+  },
+  "actions": {
+    "Get_batch": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "27_ImportBatches",
+          "$filter": "Title eq '@{triggerBody()?['batchId']}'",
+          "$top": 1
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      }
+    },
+    "Mark_validating": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "PatchItem",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "27_ImportBatches",
+          "id": "@{first(body('Get_batch')?['value'])?['ID']}",
+          "item": {
+            "BatchStatus": "Validating"
+          }
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runAfter": {
+        "Get_batch": [
+          "Succeeded"
+        ]
+      }
+    },
+    "List_rows_from_workbook": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_excelonlinebusiness",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness"
+        },
+        "parameters": {
+          "source": "sites/@{parameters('SiteUrl')}",
+          "drive": "ExportLCTemplates",
+          "file": "@{first(body('Get_batch')?['value'])?['SourceFileName']}",
+          "table": "LCImport"
+        },
+        "authentication": "@parameters('$connections')['shared_excelonlinebusiness']['authentication']"
+      },
+      "runAfter": {
+        "Mark_validating": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "comment": "The workbook must contain a named table 'LCImport'. The supplied template already does; an arbitrary tracker must have one added, which is why the template exists."
+      }
+    },
+    "Apply_to_each_row": {
+      "type": "Foreach",
+      "foreach": "@body('List_rows_from_workbook')?['value']",
+      "runAfter": {
+        "List_rows_from_workbook": [
+          "Succeeded"
+        ]
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "repetitions": 4
+        }
+      },
+      "actions": {
+        "Check_duplicate_LC": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "01_ExportLCs",
+              "$filter": "LCNumber eq '@{items('Apply_to_each_row')?['LCNumber']}'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Validate": {
+          "type": "Compose",
+          "runAfter": {
+            "Check_duplicate_LC": [
+              "Succeeded"
+            ]
+          },
+          "inputs": {
+            "messages": "@{trim(concat(if(empty(coalesce(items('Apply_to_each_row')?['LCNumber'],'')), 'LC number is required. ', ''), if(empty(coalesce(items('Apply_to_each_row')?['CustomerName'],'')), 'Customer is required. ', ''), if(or(empty(coalesce(string(items('Apply_to_each_row')?['LCAmount']),'')), less(float(coalesce(items('Apply_to_each_row')?['LCAmount'],0)), 0)), 'LC amount is missing or negative. ', ''), if(empty(coalesce(items('Apply_to_each_row')?['ExpiryDate'],'')), 'Expiry date is required. ', ''), if(and(not(empty(coalesce(items('Apply_to_each_row')?['LatestShipmentDate'],''))), not(empty(coalesce(items('Apply_to_each_row')?['ExpiryDate'],'')))), if(greater(ticks(items('Apply_to_each_row')?['LatestShipmentDate']), ticks(items('Apply_to_each_row')?['ExpiryDate'])), 'Latest shipment date is after expiry. ', ''), ''), if(greater(length(body('Check_duplicate_LC')?['value']), 0), 'An LC with this number already exists. ', '')))}",
+            "isDuplicate": "@{greater(length(body('Check_duplicate_LC')?['value']), 0)}"
+          },
+          "metadata": {
+            "comment": "The same rules the form enforces. Keeping them in step with scrLCForm is a maintenance cost worth paying - an importer that is laxer than the form is how bad data gets in."
+          }
+        },
+        "Stage_row": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PostItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "28_ImportStaging",
+              "item": {
+                "Title": "@{coalesce(items('Apply_to_each_row')?['LCNumber'], concat('row-', string(iterationIndexes('Apply_to_each_row'))))}",
+                "ImportBatchId": "@{triggerBody()?['batchId']}",
+                "SourceRowNumber": "@{add(iterationIndexes('Apply_to_each_row'), 2)}",
+                "TargetList": "01_ExportLCs",
+                "PayloadJson": "@{string(items('Apply_to_each_row'))}",
+                "ValidationState": "@{if(not(empty(outputs('Validate')?['messages'])), if(equals(outputs('Validate')?['isDuplicate'], true), 'Duplicate', 'Rejected'), 'Valid')}",
+                "ValidationMessages": "@{outputs('Validate')?['messages']}",
+                "DuplicateOfItemId": "@{if(equals(outputs('Validate')?['isDuplicate'], true), first(body('Check_duplicate_LC')?['value'])?['ID'], null)}",
+                "DuplicateKey": "@{coalesce(items('Apply_to_each_row')?['LCNumber'], '')}",
+                "DuplicateAction": "Skip"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Validate": [
+              "Succeeded"
+            ]
+          }
+        }
+      }
+    },
+    "Count_valid": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "28_ImportStaging",
+          "$filter": "ImportBatchId eq '@{triggerBody()?['batchId']}' and ValidationState eq 'Valid'",
+          "$top": 5000
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      },
+      "runAfter": {
+        "Apply_to_each_row": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Count_rejected": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "28_ImportStaging",
+          "$filter": "ImportBatchId eq '@{triggerBody()?['batchId']}' and ValidationState eq 'Rejected'",
+          "$top": 5000
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      },
+      "runAfter": {
+        "Count_valid": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Count_duplicates": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "28_ImportStaging",
+          "$filter": "ImportBatchId eq '@{triggerBody()?['batchId']}' and ValidationState eq 'Duplicate'",
+          "$top": 5000
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      },
+      "runAfter": {
+        "Count_rejected": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Update_batch": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "PatchItem",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "27_ImportBatches",
+          "id": "@{first(body('Get_batch')?['value'])?['ID']}",
+          "item": {
+            "RowsRead": "@{length(body('List_rows_from_workbook')?['value'])}",
+            "RowsValid": "@{length(body('Count_valid')?['value'])}",
+            "RowsRejected": "@{length(body('Count_rejected')?['value'])}",
+            "DuplicatesFound": "@{length(body('Count_duplicates')?['value'])}",
+            "BatchStatus": "Preview Ready"
+          }
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runAfter": {
+        "Count_duplicates": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Respond": {
+      "type": "Response",
+      "kind": "PowerApp",
+      "inputs": {
+        "statusCode": 200,
+        "body": {
+          "batchStatus": "Preview Ready",
+          "rowsValid": "@{length(body('Count_valid')?['value'])}",
+          "rowsRejected": "@{length(body('Count_rejected')?['value'])}"
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "batchStatus": {
+              "type": "string"
+            },
+            "rowsValid": {
+              "type": "string"
+            },
+            "rowsRejected": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "Update_batch": [
+          "Succeeded"
+        ]
+      }
+    }
+  },
+  "outputs": {}
+}

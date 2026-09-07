@@ -1,0 +1,50 @@
+Title,ConfigGroup,ConfigValue,ValueType,ConfigDescription,AppliesTo,IsActive,SortOrder
+LCExpiryReminderDays,Reminders,30;14;7;3;1,CSV,"Days before LC expiry on which a reminder is sent. Edit this list to change when alerts fire - no flow redeployment needed.",FLOW-01,TRUE,10
+ShipmentDeadlineReminderDays,Reminders,21;14;7;3;1,CSV,Days before the latest shipment date on which a reminder is sent.,FLOW-02,TRUE,20
+PresentationDeadlineReminderDays,Reminders,10;5;2;1,CSV,Days before the presentation deadline on which a reminder is sent.,FLOW-05,TRUE,30
+ProceedsMaturityReminderDays,Reminders,14;7;1,CSV,Days before proceeds maturity on which a reminder is sent.,FLOW-07,TRUE,40
+TaskDueReminderDays,Reminders,3;1;0,CSV,Days before a task due date on which the assignee is reminded. 0 means on the due date.,FLOW-08,TRUE,50
+MissingDocumentReminderDays,Reminders,7,Number,Reminder cadence in days while required documents remain missing on an active LC.,FLOW-03,TRUE,60
+AmendmentActionReminderDays,Reminders,3,Number,Reminder cadence in days while an amendment sits in Pending Acceptance.,FLOW-04,TRUE,70
+DiscrepancyEscalationDays,Escalation,5,Number,"Days a discrepancy may stay open before escalating to level 1. Overridden per category by 24_DiscrepancyCategories.EscalateAfterDays.",FLOW-06,TRUE,80
+DiscrepancyEscalationLevel2Days,Escalation,10,Number,Days open before escalating to the treasury manager.,FLOW-06,TRUE,90
+OverdueTaskEscalationDays,Escalation,3,Number,Days a task may stay overdue before the assignee's manager is copied.,FLOW-08,TRUE,100
+ProceedsOverdueEscalationDays,Escalation,7,Number,Days past maturity before outstanding proceeds are escalated.,FLOW-07,TRUE,110
+EscalationManagerEmail,Escalation,,Text,"Fallback escalation recipient when a user has no ManagerEmail in 17_Users. Set this before go-live.",FLOW-06;FLOW-08,TRUE,120
+AmendmentApprovalThreshold,Approvals,100000,Number,"Amendment amount increase, in USD equivalent, above which treasury manager approval is required.",FLOW-04,TRUE,130
+LCClosureRequiresApproval,Approvals,TRUE,Boolean,Whether closing or cancelling an LC requires treasury manager approval.,App;FLOW-09,TRUE,140
+DiscrepancyWriteOffThreshold,Approvals,10000,Number,"USD equivalent above which writing off outstanding proceeds requires manager approval.",App,TRUE,150
+ApprovalReminderHours,Approvals,24,Number,Hours before an unanswered approval request is re-sent.,FLOW-09,TRUE,160
+DefaultPresentationPeriodDays,Validation,21,Number,Presentation period applied when the LC does not state one. UCP 600 art. 14c default.,App,TRUE,170
+DefaultBankExaminationDays,Validation,5,Number,Banking days allowed for document examination. UCP 600 art. 14b.,App,TRUE,180
+AllowShipmentDateAfterExpiry,Validation,FALSE,Boolean,"When FALSE the app blocks saving an LC whose latest shipment date is after its expiry date.",App,TRUE,190
+AllowNegativeOutstanding,Validation,FALSE,Boolean,"When FALSE the app warns when invoices drawn exceed the LC maximum amount.",App,TRUE,200
+DuplicateLCNumberCheck,Validation,TRUE,Boolean,Check for an existing LC with the same LC number before saving a new registration.,App,TRUE,210
+DuplicateInvoiceScope,Validation,PerLC,Text,"PerLC checks invoice number uniqueness within one LC; Global checks across the whole register.",App,TRUE,220
+RequireGoodsDescription,Validation,FALSE,Boolean,Whether goods description is mandatory before an LC can leave Draft.,App,TRUE,230
+LCIDPattern,Numbering,LC-{YYYY}-{####},Text,"Internal LC ID pattern. {YYYY} is the received year, {####} a zero-padded sequence within that year.",App,TRUE,240
+AmendmentIDPattern,Numbering,{LCID}-AMD-{##},Text,Amendment reference pattern.,App,TRUE,250
+PresentationIDPattern,Numbering,{LCID}-PRES-{##},Text,Presentation reference pattern.,App,TRUE,260
+ProceedsIDPattern,Numbering,{LCID}-PR-{##},Text,Proceeds reference pattern.,App,TRUE,270
+DiscrepancyIDPattern,Numbering,{PRESID}-D{##},Text,Discrepancy reference pattern.,App,TRUE,280
+DashboardExpiringSoonDays,Dashboard,30,Number,Window in days for the Expiring Soon KPI card.,App,TRUE,290
+DashboardShipmentSoonDays,Dashboard,14,Number,Window in days for the Shipment Deadline Approaching KPI card.,App,TRUE,300
+DashboardNewLCDays,Dashboard,30,Number,Window in days for the New LCs KPI card.,App,TRUE,310
+DashboardMaturitySoonDays,Dashboard,30,Number,Window in days for the Proceeds Maturing KPI card.,App,TRUE,320
+DashboardRegisterPageSize,Dashboard,50,Number,Rows fetched per page in the LC register. Keep at or below 100 to stay inside the delegation limit.,App,TRUE,330
+DashboardRefreshMinutes,Dashboard,10,Number,Minutes before cached dashboard counts are considered stale and refetched.,App,TRUE,340
+CriticalAuditFields,Audit,LCAmount;ExpiryDate;LatestShipmentDate;CurrencyCode;LCStatus;CustomerName;IssuingBankName;BeneficiaryName;PaymentTermText;OutstandingAmount;AmountPaid;AmountAccepted,CSV,"Fields whose changes are flagged IsCriticalField in 10_AuditLog and surfaced in the Audit tab's default filter.",App;FLOW-ALL,TRUE,350
+AuditRetentionMonths,Audit,84,Number,"Months of audit history to retain online. Older partitions are archived by the admin archive job - see docs/07-deployment-runbook.md.",Admin,TRUE,360
+AuditLogFullRecordOnCreate,Audit,TRUE,Boolean,Whether a create action writes one audit row per populated field or a single summary row.,App,TRUE,370
+ImportMaxRowsPerBatch,Import,2000,Number,Maximum source rows accepted in a single import batch.,App,TRUE,380
+ImportDuplicateAction,Import,Skip,Text,"Default action when an imported LC number already exists: Skip, Update Existing or Create New.",App,TRUE,390
+ImportRequireAdminCommit,Import,TRUE,Boolean,"When TRUE, staged rows can only be committed by a user with the ADMIN role.",App,TRUE,400
+ImportAutoCreateCustomers,Import,FALSE,Boolean,"When FALSE the importer rejects rows whose customer is not already in 11_Customers, which stops the master data drifting.",App,TRUE,410
+NotificationFromDisplayName,Email,Export LC Portal,Text,Display name used on notification emails.,FLOW-ALL,TRUE,420
+NotificationSuppressWeekends,Email,TRUE,Boolean,"When TRUE, scheduled reminder flows do not send on Saturday or Sunday and roll forward to Monday.",FLOW-ALL,TRUE,430
+NotificationDigestEnabled,Email,TRUE,Boolean,Whether a single daily digest replaces individual reminder emails per user.,FLOW-10,TRUE,440
+NotificationDigestHourUTC,Email,5,Number,"Hour in UTC at which the daily digest is sent. 5 UTC is 08:00 in UTC+3.",FLOW-10,TRUE,450
+PortalDisplayName,General,Export LC Portal,Text,Name shown in the portal header.,App,TRUE,460
+PortalSupportEmail,General,,Text,Support mailbox shown in the portal footer and in notification emails. Set this before go-live.,App,TRUE,470
+BaseReportingCurrency,General,USD,Text,Currency all exposure reports normalise to using 14_Currencies.RateToUSD.,App,TRUE,480
+FinancialYearStartMonth,General,1,Number,Month number the financial year starts in. Drives year-to-date report ranges.,App,TRUE,490

@@ -1,0 +1,12 @@
+Title,IncotermName,IncotermVersion,TransportMode,InsuranceBySeller,IsActive,SortOrder
+EXW,Ex Works,2020,Any Mode,FALSE,TRUE,10
+FCA,Free Carrier,2020,Any Mode,FALSE,TRUE,20
+FAS,Free Alongside Ship,2020,Sea and Inland Waterway,FALSE,TRUE,30
+FOB,Free On Board,2020,Sea and Inland Waterway,FALSE,TRUE,40
+CFR,Cost and Freight,2020,Sea and Inland Waterway,FALSE,TRUE,50
+CIF,Cost Insurance and Freight,2020,Sea and Inland Waterway,TRUE,TRUE,60
+CPT,Carriage Paid To,2020,Any Mode,FALSE,TRUE,70
+CIP,Carriage and Insurance Paid To,2020,Any Mode,TRUE,TRUE,80
+DAP,Delivered At Place,2020,Any Mode,FALSE,TRUE,90
+DPU,Delivered At Place Unloaded,2020,Any Mode,FALSE,TRUE,100
+DDP,Delivered Duty Paid,2020,Any Mode,FALSE,TRUE,110

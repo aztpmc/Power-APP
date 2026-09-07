@@ -1,0 +1,263 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    },
+    "SiteUrl": {
+      "defaultValue": "https://CONTOSO.sharepoint.com/sites/ExportLCPortal",
+      "type": "String",
+      "metadata": {
+        "description": "Portal site collection URL. Set before enabling."
+      }
+    }
+  },
+  "triggers": {
+    "Every_morning": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "timeZone": "Arabian Standard Time",
+        "schedule": {
+          "hours": [
+            "8"
+          ],
+          "minutes": [
+            30
+          ]
+        }
+      }
+    }
+  },
+  "actions": {
+    "Get_digest_setting": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "18_WorkflowConfig",
+          "$filter": "Title eq 'NotificationDigestEnabled'",
+          "$top": 1
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      }
+    },
+    "If_digest_enabled": {
+      "type": "If",
+      "expression": {
+        "equals": [
+          "@toLower(coalesce(first(body('Get_digest_setting')?['value'])?['ConfigValue'],'true'))",
+          "true"
+        ]
+      },
+      "runAfter": {
+        "Get_digest_setting": [
+          "Succeeded"
+        ]
+      },
+      "actions": {
+        "Get_digest_users": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "17_Users",
+              "$filter": "IsActive eq 1 and ReceivesDigest eq 1",
+              "$top": 200
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          }
+        },
+        "Apply_to_each_user": {
+          "type": "Foreach",
+          "foreach": "@body('Get_digest_users')?['value']",
+          "runAfter": {
+            "Get_digest_users": [
+              "Succeeded"
+            ]
+          },
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 4
+            }
+          },
+          "actions": {
+            "Get_my_overdue_tasks": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "GetItems",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('SiteUrl')",
+                  "table": "09_Tasks",
+                  "$filter": "IsOpen eq 1 and AssignedToEmail eq '@{items('Apply_to_each_user')?['UserEmail']}' and DueDate lt '@{formatDateTime(utcNow(),'yyyy-MM-dd')}T00:00:00Z'",
+                  "$top": 100
+                },
+                "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+              },
+              "runtimeConfiguration": {
+                "paginationPolicy": {
+                  "minimumItemCount": 5000
+                }
+              }
+            },
+            "Get_my_due_today": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "GetItems",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('SiteUrl')",
+                  "table": "09_Tasks",
+                  "$filter": "IsOpen eq 1 and AssignedToEmail eq '@{items('Apply_to_each_user')?['UserEmail']}' and DueDate ge '@{formatDateTime(utcNow(),'yyyy-MM-dd')}T00:00:00Z' and DueDate le '@{formatDateTime(utcNow(),'yyyy-MM-dd')}T23:59:59Z'",
+                  "$top": 100
+                },
+                "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+              },
+              "runtimeConfiguration": {
+                "paginationPolicy": {
+                  "minimumItemCount": 5000
+                }
+              },
+              "runAfter": {
+                "Get_my_overdue_tasks": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Get_my_expiring_LCs": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "GetItems",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('SiteUrl')",
+                  "table": "01_ExportLCs",
+                  "$filter": "IsClosed eq 0 and ResponsibleOfficerEmail eq '@{items('Apply_to_each_user')?['UserEmail']}' and ExpiryDate le '@{formatDateTime(addDays(utcNow(),14),'yyyy-MM-dd')}T23:59:59Z'",
+                  "$top": 100
+                },
+                "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+              },
+              "runtimeConfiguration": {
+                "paginationPolicy": {
+                  "minimumItemCount": 5000
+                }
+              },
+              "runAfter": {
+                "Get_my_due_today": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Get_my_discrepancies": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "GetItems",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('SiteUrl')",
+                  "table": "06_Discrepancies",
+                  "$filter": "IsOpen eq 1 and AssignedToEmail eq '@{items('Apply_to_each_user')?['UserEmail']}'",
+                  "$top": 100
+                },
+                "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+              },
+              "runtimeConfiguration": {
+                "paginationPolicy": {
+                  "minimumItemCount": 5000
+                }
+              },
+              "runAfter": {
+                "Get_my_expiring_LCs": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "If_anything_to_report": {
+              "type": "If",
+              "expression": {
+                "greater": [
+                  "@add(add(length(body('Get_my_overdue_tasks')?['value']), length(body('Get_my_due_today')?['value'])), add(length(body('Get_my_expiring_LCs')?['value']), length(body('Get_my_discrepancies')?['value'])))",
+                  0
+                ]
+              },
+              "runAfter": {
+                "Get_my_discrepancies": [
+                  "Succeeded"
+                ]
+              },
+              "actions": {
+                "Send_digest": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_office365",
+                      "operationId": "SendEmailV2",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                    },
+                    "parameters": {
+                      "emailMessage/To": "@{items('Apply_to_each_user')?['UserEmail']}",
+                      "emailMessage/Subject": "Export LC digest - @{length(body('Get_my_overdue_tasks')?['value'])} overdue, @{length(body('Get_my_expiring_LCs')?['value'])} LC(s) expiring",
+                      "emailMessage/Body": "<h3>Your Export LC position this morning</h3><p><strong>@{length(body('Get_my_overdue_tasks')?['value'])}</strong> overdue task(s)<br/><strong>@{length(body('Get_my_due_today')?['value'])}</strong> task(s) due today<br/><strong>@{length(body('Get_my_expiring_LCs')?['value'])}</strong> LC(s) expiring within 14 days<br/><strong>@{length(body('Get_my_discrepancies')?['value'])}</strong> open discrepanc(ies) assigned to you</p><h4>Overdue tasks</h4><ul>@{join(select(body('Get_my_overdue_tasks')?['value'], concat('<li>', item()?['Title'], ' - due ', formatDateTime(item()?['DueDate'],'dd MMM'), '</li>')), '')}</ul><h4>LCs expiring soon</h4><ul>@{join(select(body('Get_my_expiring_LCs')?['value'], concat('<li>', item()?['LCNumber'], ' - ', item()?['CustomerName'], ' - expires ', formatDateTime(item()?['ExpiryDate'],'dd MMM'), '</li>')), '')}</ul><h4>Open discrepancies</h4><ul>@{join(select(body('Get_my_discrepancies')?['value'], concat('<li>', item()?['Title'], ' - ', coalesce(item()?['CategoryName'],''), ' (', item()?['Severity'], ')</li>')), '')}</ul><p style='color:#8A99A8;font-size:12px'>Turn this off for yourself by clearing Receives Daily Digest in 17_Users.</p>",
+                      "emailMessage/Importance": "Normal"
+                    },
+                    "authentication": "@parameters('$connections')['shared_office365']['authentication']"
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              },
+              "metadata": {
+                "comment": "A digest that says 'you have nothing' every morning trains people to delete it unread."
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      }
+    }
+  },
+  "outputs": {}
+}

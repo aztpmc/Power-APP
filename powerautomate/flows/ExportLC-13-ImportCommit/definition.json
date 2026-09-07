@@ -1,0 +1,298 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    },
+    "SiteUrl": {
+      "defaultValue": "https://CONTOSO.sharepoint.com/sites/ExportLCPortal",
+      "type": "String",
+      "metadata": {
+        "description": "Portal site collection URL. Set before enabling."
+      }
+    }
+  },
+  "triggers": {
+    "When_the_portal_calls_this_flow": {
+      "type": "Request",
+      "kind": "PowerApp",
+      "inputs": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "batchId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "batchId"
+          ]
+        }
+      }
+    }
+  },
+  "actions": {
+    "Get_batch": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "27_ImportBatches",
+          "$filter": "Title eq '@{triggerBody()?['batchId']}'",
+          "$top": 1
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      }
+    },
+    "Mark_committing": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "PatchItem",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "27_ImportBatches",
+          "id": "@{first(body('Get_batch')?['value'])?['ID']}",
+          "item": {
+            "BatchStatus": "Committing"
+          }
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runAfter": {
+        "Get_batch": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Get_committable_rows": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "28_ImportStaging",
+          "$filter": "ImportBatchId eq '@{triggerBody()?['batchId']}' and (ValidationState eq 'Valid' or (ValidationState eq 'Duplicate' and DuplicateAction ne 'Skip'))",
+          "$top": 5000
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      },
+      "runAfter": {
+        "Mark_committing": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Apply_to_each_staged_row": {
+      "type": "Foreach",
+      "foreach": "@body('Get_committable_rows')?['value']",
+      "runAfter": {
+        "Get_committable_rows": [
+          "Succeeded"
+        ]
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "repetitions": 4
+        }
+      },
+      "actions": {
+        "Parse_payload": {
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@json(items('Apply_to_each_staged_row')?['PayloadJson'])",
+            "schema": {
+              "type": "object"
+            }
+          }
+        },
+        "Create_LC": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PostItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "01_ExportLCs",
+              "item": {
+                "Title": "@{concat('LC-', formatDateTime(utcNow(),'yyyy'), '-', formatNumber(add(iterationIndexes('Apply_to_each_staged_row'), 1), '0000'))}",
+                "LCNumber": "@{body('Parse_payload')?['LCNumber']}",
+                "OurReference": "@{coalesce(body('Parse_payload')?['OurReference'],'')}",
+                "CustomerName": "@{body('Parse_payload')?['CustomerName']}",
+                "CountryName": "@{coalesce(body('Parse_payload')?['CountryName'],'')}",
+                "IssuingBankName": "@{coalesce(body('Parse_payload')?['IssuingBankName'],'')}",
+                "AdvisingBankName": "@{coalesce(body('Parse_payload')?['AdvisingBankName'],'')}",
+                "CurrencyCode": "@{coalesce(body('Parse_payload')?['CurrencyCode'],'USD')}",
+                "LCAmount": "@{float(coalesce(body('Parse_payload')?['LCAmount'],0))}",
+                "MaximumAmount": "@{float(coalesce(body('Parse_payload')?['LCAmount'],0))}",
+                "OutstandingAmount": "@{float(coalesce(body('Parse_payload')?['LCAmount'],0))}",
+                "ReceivedDate": "@{coalesce(body('Parse_payload')?['ReceivedDate'], body('Parse_payload')?['IssuanceDate'])}",
+                "IssuanceDate": "@{body('Parse_payload')?['IssuanceDate']}",
+                "ExpiryDate": "@{body('Parse_payload')?['ExpiryDate']}",
+                "LatestShipmentDate": "@{body('Parse_payload')?['LatestShipmentDate']}",
+                "PaymentTermText": "@{coalesce(body('Parse_payload')?['PaymentTermText'],'')}",
+                "LCStatus": "Active",
+                "LifecycleStage": "Active",
+                "IsClosed": false,
+                "RequiresAction": true,
+                "SourceSystem": "Excel Import",
+                "ImportBatchId": "@{triggerBody()?['batchId']}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Parse_payload": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Mark_row_committed": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "28_ImportStaging",
+              "id": "@{items('Apply_to_each_staged_row')?['ID']}",
+              "item": {
+                "ValidationState": "Committed",
+                "CommittedItemId": "@{body('Create_LC')?['ID']}",
+                "CommittedAt": "@{utcNow()}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Create_LC": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Audit_import": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PostItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "10_AuditLog",
+              "item": {
+                "Title": "ExportLC:@{body('Create_LC')?['Title']}:Import",
+                "EntityName": "ExportLC",
+                "RecordItemId": "@{body('Create_LC')?['ID']}",
+                "RecordReference": "@{body('Parse_payload')?['LCNumber']}",
+                "InternalLCID": "@{body('Create_LC')?['Title']}",
+                "LCNumber": "@{body('Parse_payload')?['LCNumber']}",
+                "ActionType": "Import",
+                "NewValue": "@{items('Apply_to_each_staged_row')?['PayloadJson']}",
+                "IsCriticalField": true,
+                "ActionByEmail": "@{first(body('Get_batch')?['value'])?['ImportedByEmail']}",
+                "ActionByName": "@{first(body('Get_batch')?['value'])?['ImportedByEmail']}",
+                "ActionTimestamp": "@{utcNow()}",
+                "ActionSource": "Excel Import",
+                "ActionComment": "Imported in batch @{triggerBody()?['batchId']} from source row @{items('Apply_to_each_staged_row')?['SourceRowNumber']}",
+                "CorrelationId": "@{triggerBody()?['batchId']}",
+                "PartitionKey": "@{formatDateTime(utcNow(), 'yyyy-MM')}"
+              }
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runAfter": {
+            "Mark_row_committed": [
+              "Succeeded"
+            ]
+          }
+        }
+      }
+    },
+    "Finalise_batch": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "PatchItem",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "27_ImportBatches",
+          "id": "@{first(body('Get_batch')?['value'])?['ID']}",
+          "item": {
+            "RowsCommitted": "@{length(body('Get_committable_rows')?['value'])}",
+            "CompletedAt": "@{utcNow()}",
+            "BatchStatus": "Committed"
+          }
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runAfter": {
+        "Apply_to_each_staged_row": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Respond": {
+      "type": "Response",
+      "kind": "PowerApp",
+      "inputs": {
+        "statusCode": 200,
+        "body": {
+          "committed": "@{length(body('Get_committable_rows')?['value'])}"
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "committed": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "Finalise_batch": [
+          "Succeeded"
+        ]
+      }
+    }
+  },
+  "outputs": {}
+}

@@ -1,0 +1,256 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    },
+    "SiteUrl": {
+      "defaultValue": "https://CONTOSO.sharepoint.com/sites/ExportLCPortal",
+      "type": "String",
+      "metadata": {
+        "description": "Portal site collection URL. Set before enabling."
+      }
+    }
+  },
+  "triggers": {
+    "When_the_portal_calls_this_flow": {
+      "type": "Request",
+      "kind": "PowerApp",
+      "inputs": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "internalLCID": {
+              "type": "string"
+            },
+            "lcNumber": {
+              "type": "string"
+            },
+            "lcItemId": {
+              "type": "integer"
+            },
+            "targetLibrary": {
+              "type": "string"
+            },
+            "documentTypeCode": {
+              "type": "string"
+            },
+            "documentTypeName": {
+              "type": "string"
+            },
+            "invoiceNumber": {
+              "type": "string"
+            },
+            "presentationNumber": {
+              "type": "string"
+            },
+            "documentDate": {
+              "type": "string"
+            },
+            "isOriginal": {
+              "type": "boolean"
+            },
+            "copies": {
+              "type": "integer"
+            },
+            "notes": {
+              "type": "string"
+            },
+            "requiresReview": {
+              "type": "boolean"
+            },
+            "fileName": {
+              "type": "string"
+            },
+            "fileContent": {
+              "type": "string"
+            },
+            "userEmail": {
+              "type": "string"
+            },
+            "userName": {
+              "type": "string"
+            },
+            "correlationId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "lcNumber",
+            "targetLibrary",
+            "documentTypeCode",
+            "fileName",
+            "fileContent"
+          ]
+        }
+      }
+    }
+  },
+  "actions": {
+    "Create_file": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "CreateFile",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "folderPath": "/@{triggerBody()?['targetLibrary']}/@{coalesce(triggerBody()?['internalLCID'], triggerBody()?['lcNumber'])}",
+          "name": "@{triggerBody()?['fileName']}",
+          "body": "@{triggerBody()?['fileContent']}"
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "metadata": {
+        "comment": "One folder per LC. Keeps any single folder far below the 5,000 item view threshold and makes the library browsable outside the app."
+      }
+    },
+    "Set_metadata": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "PatchFileItem",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "@{triggerBody()?['targetLibrary']}",
+          "id": "@{body('Create_file')?['ItemId']}",
+          "item": {
+            "LCNumber": "@{triggerBody()?['lcNumber']}",
+            "InternalLCID": "@{coalesce(triggerBody()?['internalLCID'],'')}",
+            "DocumentTypeCode": "@{triggerBody()?['documentTypeCode']}",
+            "InvoiceNumber": "@{coalesce(triggerBody()?['invoiceNumber'],'')}",
+            "PresentationNumber": "@{coalesce(triggerBody()?['presentationNumber'],'')}",
+            "DocumentDate": "@{coalesce(triggerBody()?['documentDate'], formatDateTime(utcNow(),'yyyy-MM-dd'))}",
+            "IsOriginal": "@{coalesce(triggerBody()?['isOriginal'], false)}",
+            "CopiesCount": "@{coalesce(triggerBody()?['copies'], 1)}",
+            "DocStatus": "@{if(coalesce(triggerBody()?['requiresReview'], true), 'Under Review', 'Received')}",
+            "DocNotes": "@{coalesce(triggerBody()?['notes'],'')}"
+          }
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runAfter": {
+        "Create_file": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Audit_upload": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "PostItem",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "10_AuditLog",
+          "item": {
+            "Title": "Document:@{triggerBody()?['fileName']}:Upload",
+            "EntityName": "Document",
+            "RecordItemId": "@{body('Create_file')?['ItemId']}",
+            "RecordReference": "@{triggerBody()?['fileName']}",
+            "InternalLCID": "@{coalesce(triggerBody()?['internalLCID'],'')}",
+            "LCNumber": "@{triggerBody()?['lcNumber']}",
+            "ActionType": "Document Upload",
+            "FieldName": "@{triggerBody()?['documentTypeName']}",
+            "NewValue": "@{triggerBody()?['fileName']} into @{triggerBody()?['targetLibrary']}",
+            "IsCriticalField": true,
+            "ActionByEmail": "@{triggerBody()?['userEmail']}",
+            "ActionByName": "@{triggerBody()?['userName']}",
+            "ActionTimestamp": "@{utcNow()}",
+            "ActionSource": "Power App",
+            "CorrelationId": "@{coalesce(triggerBody()?['correlationId'], workflow()['run']['name'])}",
+            "PartitionKey": "@{formatDateTime(utcNow(), 'yyyy-MM')}"
+          }
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runAfter": {
+        "Set_metadata": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Respond_success": {
+      "type": "Response",
+      "kind": "PowerApp",
+      "inputs": {
+        "statusCode": 200,
+        "body": {
+          "success": true,
+          "fileUrl": "@{body('Create_file')?['Path']}",
+          "message": "Uploaded."
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "success": {
+              "type": "boolean"
+            },
+            "fileUrl": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "Audit_upload": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "Respond_failure": {
+      "type": "Response",
+      "kind": "PowerApp",
+      "inputs": {
+        "statusCode": 200,
+        "body": {
+          "success": false,
+          "fileUrl": "",
+          "message": "@{coalesce(body('Create_file')?['message'], 'The file could not be written. Check the library name and your permissions.')}"
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "success": {
+              "type": "boolean"
+            },
+            "fileUrl": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "Create_file": [
+          "Failed",
+          "TimedOut"
+        ]
+      },
+      "metadata": {
+        "comment": "The app shows this message verbatim. A silent failure would leave the checklist claiming a document was received."
+      }
+    }
+  },
+  "outputs": {}
+}
