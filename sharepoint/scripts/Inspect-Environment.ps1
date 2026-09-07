@@ -104,7 +104,7 @@ else { Write-Host '  None found.' -ForegroundColor DarkGray }
 # ---------------------------------------------------------------------------
 Write-Host ''
 Write-Host 'LISTS OVER THE 5,000 ITEM VIEW THRESHOLD' -ForegroundColor Yellow
-$big = $visible | Where-Object { $_.Items -gt 5000 }
+$big = $inventory | Where-Object { $_.Items -gt 5000 }
 if ($big) { $big | Select-Object Title, Items | Format-Table -AutoSize }
 else { Write-Host '  None.' -ForegroundColor DarkGray }
 
