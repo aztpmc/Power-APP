@@ -992,7 +992,8 @@
           "display": "Import Batch",
           "type": "Text",
           "maxLength": 50,
-          "indexed": true
+          "indexed": false,
+          "note": "01_ExportLCs already has 20 indexed columns - SharePoint's per-list cap. ImportBatchId is only used for infrequent admin-side import-batch filtering, so it's the one left unindexed to stay under the cap; the other 19 cover every high-frequency delegated query."
         }
       ],
       "views": [

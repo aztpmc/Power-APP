@@ -103,6 +103,17 @@ def main(verbose=False):
     check("schema: no duplicate field names within an object", not dup_field, ", ".join(dup_field))
     check("schema: indexed columns within SharePoint's limit of %d" % SP_MAX_INDEXES,
           not over_index, ", ".join(over_index))
+
+    # Sitting exactly AT the cap (not just over it) has failed for real: SharePoint's async
+    # index-build queue for the list rejects the last request in the batch with "maximum
+    # number of columns is currently being indexed", and it does not clear on retry because
+    # there is no headroom left to settle into - not a transient race. Keep at least one
+    # column of slack per list.
+    at_cap = ["%s=%d" % (obj["title"], sum(1 for f in obj["fields"] if f.get("indexed")))
+               for name, obj in all_objects.items()
+               if sum(1 for f in obj["fields"] if f.get("indexed")) >= SP_MAX_INDEXES]
+    check("schema: at least one column of indexing headroom below the %d-per-list cap" % SP_MAX_INDEXES,
+          not at_cap, ", ".join(at_cap))
     check("schema: %d columns across %d objects" % (total_fields, len(all_objects)), True)
 
     # SharePoint cannot index multi-value columns at all (MultiChoice, and multi-value
