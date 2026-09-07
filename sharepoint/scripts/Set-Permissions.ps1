@@ -74,8 +74,12 @@ Write-Host ('=' * 60) -ForegroundColor Cyan
 if ($WhatIfPreference) { Write-Host 'Mode: WhatIf (no changes will be made)' -ForegroundColor Yellow }
 
 if (-not $SkipConnect) {
-    $connectArgs = @{ Url = $SiteUrl; ErrorAction = 'Stop' }
-    if ($ClientId) { $connectArgs['ClientId'] = $ClientId }
+    # Falls back to Microsoft's own pre-consented "SharePoint Online Management Shell" app
+    # when -ClientId isn't passed - without a client id, -DeviceLogin throws a confusing
+    # cross-thread error instead of a clear "specify a client id" message.
+    $DefaultClientId = '9bc3ab49-b65d-410a-85ad-de819febfddc'
+    if (-not $ClientId) { $ClientId = $DefaultClientId }
+    $connectArgs = @{ Url = $SiteUrl; ErrorAction = 'Stop'; ClientId = $ClientId }
     try {
         Connect-PnPOnline @connectArgs -Interactive
     }

@@ -27,12 +27,14 @@ git checkout claude/export-lc-portal-3set8f
 That branch is what's in [PR #1](https://github.com/aztpmc/Power-APP/pull/1) — everything
 described below is already on it.
 
-### First-time sign-in setup (do this once per tenant)
+### First-time sign-in setup
 
-PnP.PowerShell 2.x/3.x needs your tenant to have its own Entra ID app registration for
-signing in — Microsoft retired the old shared default app. If a script errors with
-**"Please specify a valid client id for an Entra ID App Registration"**, run this once, as
-an admin:
+You normally don't need to do anything here — every script falls back to Microsoft's own
+pre-consented **"SharePoint Online Management Shell"** app id automatically if you don't
+pass `-ClientId`, so sign-in just works out of the box on most tenants.
+
+If your tenant admin would rather you use a tenant-owned app instead of that shared
+Microsoft one, run this once, as an admin:
 
 ```powershell
 Register-PnPEntraIDAppForInteractiveLogin -ApplicationName "Export LC Portal" -Tenant yourtenant.onmicrosoft.com
@@ -40,8 +42,7 @@ Register-PnPEntraIDAppForInteractiveLogin -ApplicationName "Export LC Portal" -T
 
 (`yourtenant.onmicrosoft.com` is your default tenant domain — the part before
 `.sharepoint.com` in your site URL, with `.onmicrosoft.com` instead.) It signs you in,
-creates the app, and prints a `ClientId` GUID. Every script here accepts
-`-ClientId <that guid>` — pass it once and reuse it every time:
+creates the app, and prints a `ClientId` GUID. Pass it once and reuse it every time:
 
 ```powershell
 .\Deploy-ExportLCPortal.ps1 -SiteUrl <url> -ClientId <guid-from-above>
@@ -51,7 +52,10 @@ Also worth knowing: `Connect-PnPOnline -Interactive` depends on a Windows compon
 that isn't always available. If you see **"Specified method is not supported"**, that's
 this — every script here catches it automatically and falls back to device login (it'll
 print a URL and a short code; open the URL in any browser and type the code). Nothing to
-do differently, it just takes one extra click.
+do differently, it just takes one extra click. (If you ever see a confusing error about
+`WriteObject`/`WriteError` methods and threads during that fallback, it means device login
+ran with no client id at all — this no longer happens now that a default is always set, but
+if you see it anyway, re-run and it will pick up the default.)
 
 ## 1. Pick or create the SharePoint site
 

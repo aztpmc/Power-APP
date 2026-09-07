@@ -96,8 +96,15 @@ if (-not (Get-Module -ListAvailable -Name PnP.PowerShell)) {
 Import-Module PnP.PowerShell -ErrorAction Stop
 
 Write-Host 'Signing in once - every phase below reuses this connection.' -ForegroundColor Cyan
-$connectArgs = @{ Url = $SiteUrl; ErrorAction = 'Stop' }
-if ($ClientId) { $connectArgs['ClientId'] = $ClientId }
+# Microsoft's own pre-consented "SharePoint Online Management Shell" app. Used as a fallback
+# so sign-in always has a valid client id even if -ClientId was never passed - without one,
+# -DeviceLogin doesn't just fail cleanly, it throws a confusing cross-thread WriteObject/
+# WriteError error from deep inside PnP.PowerShell instead of the real "specify a client id"
+# message. Pass your own -ClientId (from Register-PnPEntraIDAppForInteractiveLogin) if your
+# tenant admin prefers a tenant-owned app instead of this shared Microsoft one.
+$DefaultClientId = '9bc3ab49-b65d-410a-85ad-de819febfddc'
+if (-not $ClientId) { $ClientId = $DefaultClientId }
+$connectArgs = @{ Url = $SiteUrl; ErrorAction = 'Stop'; ClientId = $ClientId }
 try {
     Connect-PnPOnline @connectArgs -Interactive
 }
