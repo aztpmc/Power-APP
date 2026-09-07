@@ -23,7 +23,8 @@
 param(
     [Parameter(Mandatory = $true)][string] $SiteUrl,
     [string] $SchemaPath,
-    [switch] $SkipConnect
+    [switch] $SkipConnect,
+    [string] $ClientId
 )
 
 $ErrorActionPreference = 'Stop'
@@ -36,16 +37,21 @@ Write-Host 'Export LC Portal - environment inspection (READ ONLY)' -ForegroundCo
 Write-Host ('=' * 70) -ForegroundColor Cyan
 
 if (-not $SkipConnect) {
+    $connectArgs = @{ Url = $SiteUrl; ErrorAction = 'Stop' }
+    if ($ClientId) { $connectArgs['ClientId'] = $ClientId }
     try {
-        Connect-PnPOnline -Url $SiteUrl -Interactive -ErrorAction Stop
+        Connect-PnPOnline @connectArgs -Interactive
     }
     catch {
         # "Specified method is not supported" and similar show up when the local machine
         # can't use the WAM browser broker (missing/disabled Web Account Manager component).
         # Device login has no such dependency - it works from any machine with a browser.
+        # "Please specify a valid client id" means this tenant has no PnP Entra ID app
+        # registered yet - run Register-PnPEntraIDAppForInteractiveLogin once (see
+        # docs/11-quickstart-at-home.md) and pass its ClientId here with -ClientId.
         Write-Warning "Interactive sign-in didn't work on this machine ($($_.Exception.Message))."
         Write-Warning 'Falling back to device login - open the URL printed below in any browser and enter the code shown.'
-        Connect-PnPOnline -Url $SiteUrl -DeviceLogin -ErrorAction Stop
+        Connect-PnPOnline @connectArgs -DeviceLogin
     }
 }
 

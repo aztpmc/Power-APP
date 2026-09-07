@@ -28,6 +28,17 @@
 .PARAMETER Unattended
     Do not prompt for confirmation between phases. Use for a re-run you already trust.
 
+.PARAMETER ClientId
+    Entra ID App Registration client id for PnP to sign in with. Needed on PnP.PowerShell
+    2.x/3.x if your tenant has never used PnP before - sign-in fails with "Please specify
+    a valid client id for an Entra ID App Registration" until one exists. Create one once,
+    as an admin:
+
+        Register-PnPEntraIDAppForInteractiveLogin -ApplicationName "Export LC Portal" -Tenant yourtenant.onmicrosoft.com
+
+    then pass the ClientId it prints here. Not needed if your tenant already has a PnP
+    app registered and it's set as the tenant default.
+
 .EXAMPLE
     .\Deploy-ExportLCPortal.ps1 -SiteUrl https://contoso.sharepoint.com/sites/ExportLCPortal
 
@@ -39,7 +50,8 @@ param(
     [Parameter(Mandatory = $true)][string] $SiteUrl,
     [switch] $SkipInspect,
     [switch] $SkipFlows,
-    [switch] $Unattended
+    [switch] $Unattended,
+    [string] $ClientId
 )
 
 $ErrorActionPreference = 'Stop'
@@ -84,13 +96,15 @@ if (-not (Get-Module -ListAvailable -Name PnP.PowerShell)) {
 Import-Module PnP.PowerShell -ErrorAction Stop
 
 Write-Host 'Signing in once - every phase below reuses this connection.' -ForegroundColor Cyan
+$connectArgs = @{ Url = $SiteUrl; ErrorAction = 'Stop' }
+if ($ClientId) { $connectArgs['ClientId'] = $ClientId }
 try {
-    Connect-PnPOnline -Url $SiteUrl -Interactive -ErrorAction Stop
+    Connect-PnPOnline @connectArgs -Interactive
 }
 catch {
     Write-Warning "Interactive sign-in didn't work on this machine ($($_.Exception.Message))."
     Write-Warning 'Falling back to device login - open the URL printed below in any browser and enter the code shown.'
-    Connect-PnPOnline -Url $SiteUrl -DeviceLogin -ErrorAction Stop
+    Connect-PnPOnline @connectArgs -DeviceLogin
 }
 Write-Host "Connected: $((Get-PnPWeb).Title)" -ForegroundColor Green
 

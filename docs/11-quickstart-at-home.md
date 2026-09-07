@@ -27,6 +27,32 @@ git checkout claude/export-lc-portal-3set8f
 That branch is what's in [PR #1](https://github.com/aztpmc/Power-APP/pull/1) — everything
 described below is already on it.
 
+### First-time sign-in setup (do this once per tenant)
+
+PnP.PowerShell 2.x/3.x needs your tenant to have its own Entra ID app registration for
+signing in — Microsoft retired the old shared default app. If a script errors with
+**"Please specify a valid client id for an Entra ID App Registration"**, run this once, as
+an admin:
+
+```powershell
+Register-PnPEntraIDAppForInteractiveLogin -ApplicationName "Export LC Portal" -Tenant yourtenant.onmicrosoft.com
+```
+
+(`yourtenant.onmicrosoft.com` is your default tenant domain — the part before
+`.sharepoint.com` in your site URL, with `.onmicrosoft.com` instead.) It signs you in,
+creates the app, and prints a `ClientId` GUID. Every script here accepts
+`-ClientId <that guid>` — pass it once and reuse it every time:
+
+```powershell
+.\Deploy-ExportLCPortal.ps1 -SiteUrl <url> -ClientId <guid-from-above>
+```
+
+Also worth knowing: `Connect-PnPOnline -Interactive` depends on a Windows component (WAM)
+that isn't always available. If you see **"Specified method is not supported"**, that's
+this — every script here catches it automatically and falls back to device login (it'll
+print a URL and a short code; open the URL in any browser and type the code). Nothing to
+do differently, it just takes one extra click.
+
 ## 1. Pick or create the SharePoint site
 
 New site collection recommended (Team site, no Microsoft 365 group needed). You need to be

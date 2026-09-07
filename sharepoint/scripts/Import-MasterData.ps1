@@ -23,7 +23,8 @@ param(
     [Parameter(Mandatory = $true)][string] $SiteUrl,
     [string] $DataPath,
     [string[]] $Only,
-    [switch] $SkipConnect
+    [switch] $SkipConnect,
+    [string] $ClientId
 )
 
 $ErrorActionPreference = 'Stop'
@@ -84,13 +85,15 @@ Write-Host ('=' * 60) -ForegroundColor Cyan
 if ($WhatIfPreference) { Write-Host 'Mode: WhatIf (no changes will be made)' -ForegroundColor Yellow }
 
 if (-not $SkipConnect) {
+    $connectArgs = @{ Url = $SiteUrl; ErrorAction = 'Stop' }
+    if ($ClientId) { $connectArgs['ClientId'] = $ClientId }
     try {
-        Connect-PnPOnline -Url $SiteUrl -Interactive -ErrorAction Stop
+        Connect-PnPOnline @connectArgs -Interactive
     }
     catch {
         Write-Warning "Interactive sign-in didn't work on this machine ($($_.Exception.Message))."
         Write-Warning 'Falling back to device login - open the URL printed below in any browser and enter the code shown.'
-        Connect-PnPOnline -Url $SiteUrl -DeviceLogin -ErrorAction Stop
+        Connect-PnPOnline @connectArgs -DeviceLogin
     }
 }
 
