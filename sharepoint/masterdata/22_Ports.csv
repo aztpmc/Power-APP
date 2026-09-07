@@ -1,0 +1,24 @@
+Title,PortCode,PortType,CountryName,IsActive,SortOrder
+Jeddah Islamic Port,SAJED,Sea Port,Saudi Arabia,TRUE,10
+King Abdulaziz Port Dammam,SADMM,Sea Port,Saudi Arabia,TRUE,20
+King Abdullah Port,SAKAC,Sea Port,Saudi Arabia,TRUE,30
+Jeddah King Abdulaziz International Airport,SAJED-AIR,Airport,Saudi Arabia,TRUE,40
+Riyadh King Khalid International Airport,SARUH,Airport,Saudi Arabia,TRUE,50
+Port Sultan Qaboos,OMMCT,Sea Port,Oman,TRUE,60
+Sohar Port,OMSOH,Sea Port,Oman,TRUE,70
+Salalah Port,OMSLL,Sea Port,Oman,TRUE,80
+Muscat International Airport,OMMCT-AIR,Airport,Oman,TRUE,90
+Umm Qasr Port,IQUQR,Sea Port,Iraq,TRUE,100
+Baghdad International Airport,IQBGW,Airport,Iraq,TRUE,110
+Erbil International Airport,IQEBL,Airport,Iraq,TRUE,120
+Tripoli Port,LYTIP,Sea Port,Libya,TRUE,130
+Benghazi Port,LYBEN,Sea Port,Libya,TRUE,140
+Misrata Port,LYMRA,Sea Port,Libya,TRUE,150
+Djibouti Port,DJJIB,Sea Port,Djibouti,TRUE,160
+Addis Ababa Bole International Airport,ETADD,Airport,Ethiopia,TRUE,170
+Modjo Dry Port,ETMOD,Inland / Dry Port,Ethiopia,TRUE,180
+Casablanca Port,MACAS,Sea Port,Morocco,TRUE,190
+Tanger Med Port,MAPTM,Sea Port,Morocco,TRUE,200
+Jebel Ali Port,AEJEA,Sea Port,UAE,TRUE,210
+Dubai International Airport,AEDXB,Airport,UAE,TRUE,220
+Shuwaikh Port,KWSWK,Sea Port,Kuwait,TRUE,230

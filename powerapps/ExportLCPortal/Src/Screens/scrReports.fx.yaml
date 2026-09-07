@@ -1,0 +1,356 @@
+# =============================================================================
+# scrReports - operational reports
+# =============================================================================
+# Twelve reports, all of them defined as data rather than as twelve screens. Selecting
+# a report sets its query, its columns and its grouping; one gallery renders the result
+# and one Export action writes the current result set to a CSV the user can open.
+#
+# Delegation: every report query is a delegable Filter over indexed columns. Reports
+# that need a true aggregate over the whole book (customer exposure, bank exposure)
+# read 29_DashboardMetrics instead, because summing a table client-side would silently
+# stop at the row limit.
+# =============================================================================
+
+scrReports As screen:
+    Fill: =ThemeCanvas
+    OnVisible: |
+        =Set(gblNavSection, "REPORTS");
+        If(IsBlank(gblReportKey), Set(gblReportKey, "LC_REGISTER"))
+
+    navRail As cmpNavRail:
+        X: =0
+        Y: =0
+        Width: =RailWidth
+        Height: =Parent.Height
+        ActiveKey: ="REPORTS"
+        UserName: =gblUserName
+        RoleLabel: |
+            =Switch(gblRole, "ADMIN", "Administrator", "MANAGER", "Treasury Manager",
+                "OFFICER", "Treasury Officer", "REVIEWER", "Reviewer", "Read only")
+        OnNavigate: |
+            =Switch(
+                gblNavSection,
+                "HOME",      Navigate(scrDashboard, ScreenTransition.None),
+                "LCS",       Navigate(scrLCRegister, ScreenTransition.None),
+                "INVOICES",  Navigate(scrInvoices, ScreenTransition.None),
+                "SHIPMENTS", Navigate(scrShipments, ScreenTransition.None),
+                "PRESENT",   Navigate(scrPresentations, ScreenTransition.None),
+                "DOCS",      Navigate(scrDocuments, ScreenTransition.None),
+                "DISCREP",   Navigate(scrDiscrepancies, ScreenTransition.None),
+                "PROCEEDS",  Navigate(scrProceeds, ScreenTransition.None),
+                "CORRESP",   Navigate(scrCorrespondence, ScreenTransition.None),
+                "TASKS",     Navigate(scrTasks, ScreenTransition.None),
+                "REPORTS",   Navigate(scrReports, ScreenTransition.None),
+                "ADMIN",     Navigate(scrAdmin, ScreenTransition.None)
+            )
+    topBar As cmpTopBar:
+        X: =ContentX
+        Y: =0
+        Width: =ContentWidth
+        Height: =ThemeTopBarHeight
+        TitleText: ="Reports"
+        Breadcrumb: ="Reports  ·  " & LookUp(galReportList.AllItems, Key = gblReportKey).Label
+        ShowSearch: =false
+        ShowPrimary: =true
+        PrimaryLabel: ="Export CSV"
+        # Download() on a data URI keeps the export inside the app's own permissions -
+        # no extra connector, no mailbox, nothing that needs a separate approval.
+        OnPrimary: |
+            =Download(
+                "data:text/csv;charset=utf-8," &
+                EncodeUrl(
+                    Concat(galReport.AllItems, C1 & "," & C2 & "," & C3 & "," & C4 & "," & C5, Char(13) & Char(10))
+                )
+            )
+
+    galReportList As gallery:
+        X: =ContentX
+        Y: =ThemeTopBarHeight + ThemeSpace3
+        Width: =260
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        TemplateSize: =40
+        TemplatePadding: =0
+        ShowScrollbar: =false
+        DelayItemLoading: =false
+        Items: |
+            =Table(
+                { Key: "LC_REGISTER",       Label: "LC register",          Grp: "Portfolio" },
+                { Key: "LC_EXPIRY",         Label: "LC expiry",            Grp: "Deadlines" },
+                { Key: "SHIPMENT_DEADLINE", Label: "Shipment deadline",    Grp: "Deadlines" },
+                { Key: "OUTSTANDING_DOCS",  Label: "Outstanding documents", Grp: "Documents" },
+                { Key: "PRESENTATION_REG",  Label: "Presentation register", Grp: "Operations" },
+                { Key: "DISCREPANCY",       Label: "Discrepancy report",   Grp: "Operations" },
+                { Key: "OUTSTANDING_PROC",  Label: "Outstanding proceeds", Grp: "Settlement" },
+                { Key: "CUSTOMER_EXPOSURE", Label: "Customer exposure",    Grp: "Exposure" },
+                { Key: "BANK_EXPOSURE",     Label: "Bank exposure",        Grp: "Exposure" },
+                { Key: "LC_AGING",          Label: "LC aging",             Grp: "Exposure" },
+                { Key: "CHARGES",           Label: "Charges",              Grp: "Settlement" },
+                { Key: "PENDING_TASKS",     Label: "Pending tasks",        Grp: "Operations" }
+            )
+
+        btnReport As button:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth - ThemeSpace3
+            Height: =38
+            Text: =""
+            Fill: =If(gblReportKey = ThisItem.Key, ThemeAccentSoft, ThemeSurface)
+            HoverFill: =ThemeSurfaceHover
+            BorderColor: =If(gblReportKey = ThisItem.Key, ThemeAccent, ThemeBorder)
+            BorderThickness: =1
+            RadiusTopLeft: =4
+            RadiusTopRight: =4
+            RadiusBottomLeft: =4
+            RadiusBottomRight: =4
+            OnSelect: =Set(gblReportKey, ThisItem.Key)
+            AccessibleLabel: =ThisItem.Label
+
+        lblReportName As label:
+            X: =ThemeSpace3
+            Y: =0
+            Width: =Parent.TemplateWidth - ThemeSpace3 - 12
+            Height: =22
+            Text: =ThisItem.Label
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: |
+                =If(gblReportKey = ThisItem.Key, FontWeight.Semibold, FontWeight.Normal)
+            Color: =If(gblReportKey = ThisItem.Key, ThemeAccent, ThemeText)
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+            DisplayMode: =DisplayMode.View
+
+        lblReportGrp As label:
+            X: =ThemeSpace3
+            Y: =20
+            Width: =Parent.TemplateWidth - ThemeSpace3 - 12
+            Height: =14
+            Text: =ThisItem.Grp
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: =ThemeTextMuted
+            PaddingLeft: =0
+            DisplayMode: =DisplayMode.View
+
+    lblReportHeader As label:
+        X: =ContentX + 270
+        Y: =ThemeTopBarHeight + ThemeSpace3
+        Width: =ContentWidth - 270
+        Height: =28
+        Text: =LookUp(galReportList.AllItems, Key = gblReportKey).Label
+        Font: =ThemeFont
+        Size: =ThemeSizeTitle
+        FontWeight: =FontWeight.Semibold
+        Color: =ThemeText
+        PaddingLeft: =0
+
+    lblReportSub As label:
+        X: =ContentX + 270
+        Y: =lblReportHeader.Y + 26
+        Width: =ContentWidth - 270
+        Height: =18
+        Text: |
+            =Switch(
+                gblReportKey,
+                "LC_REGISTER",       "Every open LC with its current utilisation.",
+                "LC_EXPIRY",         "Open LCs by expiry date, soonest first.",
+                "SHIPMENT_DEADLINE", "Unshipped LCs by latest shipment date.",
+                "OUTSTANDING_DOCS",  "LCs with required documents still missing.",
+                "PRESENTATION_REG",  "Presentations and their examination outcome.",
+                "DISCREPANCY",       "Open discrepancies by severity and age.",
+                "OUTSTANDING_PROC",  "Accepted but unpaid proceeds by maturity.",
+                "CUSTOMER_EXPOSURE", "Outstanding exposure by customer, normalised to " & BaseCurrency & ".",
+                "BANK_EXPOSURE",     "Outstanding exposure by issuing bank.",
+                "LC_AGING",          "Open LCs bucketed by age since receipt.",
+                "CHARGES",           "Bank and other charges by settlement.",
+                "PENDING_TASKS",     "Open tasks by assignee and due date.",
+                ""
+            )
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =ThemeTextMuted
+        PaddingLeft: =0
+
+    galReport As gallery:
+        X: =ContentX + 270
+        Y: =lblReportSub.Y + 28
+        Width: =ContentWidth - 270
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        TemplateSize: =40
+        TemplatePadding: =0
+        ShowScrollbar: =true
+        DelayItemLoading: =true
+        LoadingSpinner: =LoadingSpinner.Data
+        # Every report is shaped into the same five columns so one row template renders
+        # all twelve. The column headings come from the same Switch, one branch below.
+        Items: |
+            =Switch(
+                gblReportKey,
+                "LC_REGISTER",
+                    ForAll(
+                        FirstN(SortByColumns(Filter('01_ExportLCs', IsClosed = false), "ExpiryDate", SortOrder.Ascending), 500) As r,
+                        { C1: r.LCNumber, C2: r.CustomerName, C3: r.CurrencyCode & " " & Text(r.LCAmount, "#,##0.00"),
+                          C4: Text(r.OutstandingAmount, "#,##0.00"), C5: r.LCStatus }
+                    ),
+                "LC_EXPIRY",
+                    ForAll(
+                        FirstN(SortByColumns(Filter('01_ExportLCs', IsClosed = false, ExpiryDate <= DateAdd(Today0, 180, Days)), "ExpiryDate", SortOrder.Ascending), 500) As r,
+                        { C1: r.LCNumber, C2: r.CustomerName, C3: DateShort(r.ExpiryDate),
+                          C4: Text(DaysUntil(r.ExpiryDate)) & " days", C5: Text(r.OutstandingAmount, "#,##0.00") }
+                    ),
+                "SHIPMENT_DEADLINE",
+                    ForAll(
+                        FirstN(SortByColumns(Filter('04_Shipments', IsShipped = false), "LatestShipmentDate", SortOrder.Ascending), 500) As r,
+                        { C1: r.LCNumber, C2: r.CustomerName, C3: r.Title,
+                          C4: DateShort(r.LatestShipmentDate), C5: Text(DaysUntil(r.LatestShipmentDate)) & " days" }
+                    ),
+                "OUTSTANDING_DOCS",
+                    ForAll(
+                        FirstN(SortByColumns(Filter('20_LCDocumentChecklist', IsRequired = true, IsReceived = false), "LCNumber", SortOrder.Ascending), 500) As r,
+                        { C1: r.LCNumber, C2: r.DocumentTypeName, C3: "Required",
+                          C4: Text(r.OriginalsRequired) & " originals", C5: r.ChecklistStatus }
+                    ),
+                "PRESENTATION_REG",
+                    ForAll(
+                        FirstN(SortByColumns(Filter('05_Presentations', IsClosed = false), "PresentationDate", SortOrder.Descending), 500) As r,
+                        { C1: r.Title, C2: r.LCNumber, C3: DateShort(r.PresentationDate),
+                          C4: Text(r.AmountPresented, "#,##0.00"), C5: r.ExaminationStatus }
+                    ),
+                "DISCREPANCY",
+                    ForAll(
+                        FirstN(SortByColumns(Filter('06_Discrepancies', IsOpen = true), "DetectedDate", SortOrder.Ascending), 500) As r,
+                        { C1: r.LCNumber, C2: Coalesce(r.CategoryName, r.CategoryCode), C3: r.Severity,
+                          C4: DateShort(r.DetectedDate), C5: Text(-DaysUntil(r.DetectedDate)) & " days open" }
+                    ),
+                "OUTSTANDING_PROC",
+                    ForAll(
+                        FirstN(SortByColumns(Filter('07_Proceeds', IsSettled = false), "MaturityDate", SortOrder.Ascending), 500) As r,
+                        { C1: r.LCNumber, C2: r.CustomerName, C3: Text(r.AmountAccepted, "#,##0.00"),
+                          C4: Text(r.OutstandingProceeds, "#,##0.00"), C5: DateShort(r.MaturityDate) }
+                    ),
+                "CUSTOMER_EXPOSURE",
+                    ForAll(
+                        SortByColumns(Filter('29_DashboardMetrics', MetricGroup = "Exposure", StartsWith(Title, "CUST_")), "MetricAmount", SortOrder.Descending) As r,
+                        { C1: r.MetricLabel, C2: r.MetricSubLabel, C3: Text(r.MetricCount),
+                          C4: Text(r.MetricAmount, "#,##0.00"), C5: r.MetricCurrency }
+                    ),
+                "BANK_EXPOSURE",
+                    ForAll(
+                        SortByColumns(Filter('29_DashboardMetrics', MetricGroup = "Exposure", StartsWith(Title, "BANK_")), "MetricAmount", SortOrder.Descending) As r,
+                        { C1: r.MetricLabel, C2: r.MetricSubLabel, C3: Text(r.MetricCount),
+                          C4: Text(r.MetricAmount, "#,##0.00"), C5: r.MetricCurrency }
+                    ),
+                "LC_AGING",
+                    ForAll(
+                        FirstN(SortByColumns(Filter('01_ExportLCs', IsClosed = false), "ReceivedDate", SortOrder.Ascending), 500) As r,
+                        { C1: r.LCNumber, C2: r.CustomerName, C3: DateShort(r.ReceivedDate),
+                          C4: With({ age: -DaysUntil(r.ReceivedDate) },
+                                If(age <= 30, "0-30 days", age <= 60, "31-60 days", age <= 90, "61-90 days",
+                                   age <= 180, "91-180 days", "over 180 days")),
+                          C5: Text(r.OutstandingAmount, "#,##0.00") }
+                    ),
+                "CHARGES",
+                    ForAll(
+                        FirstN(SortByColumns('07_Proceeds', "ValueDate", SortOrder.Descending), 500) As r,
+                        { C1: r.LCNumber, C2: r.Title, C3: Text(r.BankCharges, "#,##0.00"),
+                          C4: Text(r.BankCharges + r.CorrespondentCharges + r.DiscountCharges + r.OtherCharges, "#,##0.00"),
+                          C5: r.ChargesBorneBy }
+                    ),
+                "PENDING_TASKS",
+                    ForAll(
+                        FirstN(SortByColumns(Filter('09_Tasks', IsOpen = true), "DueDate", SortOrder.Ascending), 500) As r,
+                        { C1: r.Title, C2: r.LCNumber, C3: Coalesce(r.AssignedTo.DisplayName, "unassigned"),
+                          C4: DateShort(r.DueDate), C5: r.Priority }
+                    ),
+                Blank()
+            )
+
+        recRepBg As rectangle:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight - 1
+            Fill: =ThemeSurface
+
+        recRepRule As rectangle:
+            X: =0
+            Y: =Parent.TemplateHeight - 1
+            Width: =Parent.TemplateWidth
+            Height: =1
+            Fill: =ThemeBorder
+
+        lblR1 As label:
+            X: =ThemeSpace3
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.20
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.C1
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeText
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblR2 As label:
+            X: =lblR1.X + lblR1.Width
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.26
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.C2
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblR3 As label:
+            X: =lblR2.X + lblR2.Width
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.18
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.C3
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeText
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblR4 As label:
+            X: =lblR3.X + lblR3.Width
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.18
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.C4
+            Align: =Align.Right
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeText
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingRight: =0
+
+        lblR5 As label:
+            X: =lblR4.X + lblR4.Width + ThemeSpace3
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.16
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.C5
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+    emptyReport As cmpEmptyState:
+        X: =ContentX + 270
+        Y: =galReport.Y + 30
+        Width: =ContentWidth - 270
+        Height: =160
+        Visible: =IsEmpty(galReport.AllItems)
+        Title: ="No rows"
+        Body: |
+            ="This report returned nothing." &
+             If(gblReportKey in ["CUSTOMER_EXPOSURE", "BANK_EXPOSURE"],
+                " Exposure reports read pre-aggregated figures - run the dashboard refresh if they have never been computed.", "")
+        ActionLabel: =""

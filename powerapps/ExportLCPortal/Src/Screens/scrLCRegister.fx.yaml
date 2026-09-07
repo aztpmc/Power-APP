@@ -1,0 +1,778 @@
+# =============================================================================
+# scrLCRegister - the Export LC register
+# =============================================================================
+# A dense, sortable, filterable enterprise table. The whole screen runs on ONE
+# delegable Filter() call against 01_ExportLCs.
+#
+# How the delegation works, because this is the part that decides whether the portal
+# still works at 5,000 LCs:
+#
+#   * Optional text criteria use StartsWith(column, value). StartsWith(x, "") is true for
+#     every row, so an empty filter box costs nothing and the predicate still folds into
+#     the OData query. An "or list" of statuses would NOT delegate, which is exactly why
+#     01_ExportLCs carries the stored RequiresAction flag.
+#   * Optional ranges use Coalesce(value, sentinel) rather than Blank(), because there is
+#     no OData way to say "ignore this predicate" - but there is a way to say
+#     "<= 2999-12-31".
+#   * The only branch is IncludeClosed, and it branches the whole Filter so both arms stay
+#     fully delegable rather than nesting one Filter inside another (which would not).
+#   * SortByColumns runs server-side on indexed columns only. The sort picker is
+#     deliberately limited to indexed columns for that reason.
+#   * Paging is explicit. RegisterPageSize rows at a time, never a full-table pull.
+# =============================================================================
+
+scrLCRegister As screen:
+    Fill: =ThemeCanvas
+    OnVisible: |
+        =Set(gblNavSection, "LCS");
+        // Arriving without a filter (from the rail rather than a KPI) shows the open book.
+        If(IsBlank(gblFilter) || IsBlank(gblFilter.SortBy), Set(gblFilter, PresetFilter("ACTIVE", false)));
+        Set(gblRegPage, 1);
+        Set(gblSelectedLCs, Blank())
+
+    navRail As cmpNavRail:
+        X: =0
+        Y: =0
+        Width: =RailWidth
+        Height: =Parent.Height
+        ActiveKey: ="LCS"
+        UserName: =gblUserName
+        RoleLabel: |
+            =Switch(gblRole, "ADMIN", "Administrator", "MANAGER", "Treasury Manager",
+                "OFFICER", "Treasury Officer", "REVIEWER", "Reviewer", "Read only")
+        BadgePendingAction: =0
+        BadgeDiscrepancies: =0
+        BadgeTasks: =0
+        OnNavigate: |
+            =Switch(
+                gblNavSection,
+                "HOME",      Navigate(scrDashboard, ScreenTransition.None),
+                "LCS",       Navigate(scrLCRegister, ScreenTransition.None),
+                "INVOICES",  Navigate(scrInvoices, ScreenTransition.None),
+                "SHIPMENTS", Navigate(scrShipments, ScreenTransition.None),
+                "PRESENT",   Navigate(scrPresentations, ScreenTransition.None),
+                "DOCS",      Navigate(scrDocuments, ScreenTransition.None),
+                "DISCREP",   Navigate(scrDiscrepancies, ScreenTransition.None),
+                "PROCEEDS",  Navigate(scrProceeds, ScreenTransition.None),
+                "CORRESP",   Navigate(scrCorrespondence, ScreenTransition.None),
+                "TASKS",     Navigate(scrTasks, ScreenTransition.None),
+                "REPORTS",   Navigate(scrReports, ScreenTransition.None),
+                "ADMIN",     Navigate(scrAdmin, ScreenTransition.None)
+            )
+
+    topBar As cmpTopBar:
+        X: =ContentX
+        Y: =0
+        Width: =ContentWidth
+        Height: =ThemeTopBarHeight
+        TitleText: ="Export LCs"
+        Breadcrumb: |
+            ="Export LCs" &
+             If(Len(gblFilter.Preset) > 0,
+                "  ·  " & Proper(Substitute(gblFilter.Preset, "_", " ")), "")
+        ShowSearch: =false
+        ShowPrimary: =CanCreateLC
+        PrimaryLabel: ="Register LC"
+        OnPrimary: |
+            =Set(gblEditLC, Blank());
+            Set(gblFormMode, "New");
+            Navigate(scrLCForm, ScreenTransition.CoverRight)
+
+    # -------------------------------------------------------------------------
+    # Preset chips. The same PresetFilter() the dashboard uses, so a chip and a KPI
+    # card that carry the same name always produce the same rows.
+    # -------------------------------------------------------------------------
+    galPresets As gallery:
+        X: =ContentX
+        Y: =ThemeTopBarHeight + ThemeSpace3
+        Width: =ContentWidth
+        Height: =32
+        Layout: =Layout.Horizontal
+        TemplateSize: =128
+        TemplatePadding: =0
+        ShowScrollbar: =false
+        DelayItemLoading: =false
+        Items: |
+            =Table(
+                { Key: "ACTIVE",           Label: "All open" },
+                { Key: "MINE",             Label: "My LCs" },
+                { Key: "PENDING_ACTION",   Label: "Pending action" },
+                { Key: "EXPIRING_SOON",    Label: "Expiring soon" },
+                { Key: "SHIPMENT_SOON",    Label: "Shipment due" },
+                { Key: "MISSING_DOCS",     Label: "Missing docs" },
+                { Key: "DISCREPANCIES",    Label: "Discrepancies" },
+                { Key: "ALL",              Label: "Include closed" }
+            )
+
+        btnPreset As button:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth - ThemeSpace2
+            Height: =30
+            Text: =ThisItem.Label
+            Fill: =If(gblFilter.Preset = ThisItem.Key, ThemeAccentSoft, ThemeSurface)
+            HoverFill: =ThemeSurfaceHover
+            Color: =If(gblFilter.Preset = ThisItem.Key, ThemeAccent, ThemeTextSecondary)
+            BorderColor: =If(gblFilter.Preset = ThisItem.Key, ThemeAccent, ThemeBorderStrong)
+            BorderThickness: =1
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: |
+                =If(gblFilter.Preset = ThisItem.Key, FontWeight.Semibold, FontWeight.Normal)
+            RadiusTopLeft: =15
+            RadiusTopRight: =15
+            RadiusBottomLeft: =15
+            RadiusBottomRight: =15
+            OnSelect: |
+                =Set(gblFilter, PresetFilter(ThisItem.Key, ThisItem.Key = "MINE"));
+                Set(gblRegPage, 1)
+
+    # -------------------------------------------------------------------------
+    # Filter bar. Search plus five dimension filters, always visible - a filter panel
+    # you have to open is a filter panel nobody uses.
+    # -------------------------------------------------------------------------
+    recFilterBar As rectangle:
+        X: =ContentX
+        Y: =galPresets.Y + galPresets.Height + ThemeSpace3
+        Width: =ContentWidth
+        Height: =If(gblShowAdvanced, 108, 56)
+        Fill: =ThemeSurface
+        BorderColor: =ThemeBorder
+        BorderThickness: =1
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+
+    txtSearch As text:
+        X: =recFilterBar.X + ThemeSpace3
+        Y: =recFilterBar.Y + 12
+        Width: =260
+        Height: =32
+        HintText: ="LC number, our reference, customer, applicant"
+        Default: =gblFilter.Search
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        BorderColor: =ThemeBorderStrong
+        FocusedBorderColor: =ThemeAccent
+        BorderThickness: =1
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        # OnChange, not OnSelect: one delegated query per completed edit rather than one
+        # per keystroke. Delay is set on the control so typing stays responsive.
+        DelayOutput: =true
+        OnChange: |
+            =Set(gblFilter, Patch(gblFilter, { Search: Self.Value }));
+            Set(gblRegPage, 1)
+
+    drpStatus As dropdown:
+        X: =txtSearch.X + txtSearch.Width + ThemeSpace2
+        Y: =txtSearch.Y
+        Width: =160
+        Height: =32
+        Items: |
+            =Ungroup(
+                Table(
+                    { R: Table({ Value: "" }) },
+                    { R: ShowColumns(SortByColumns(Filter(colStatus, EntityName = "ExportLC"), "SortOrder", SortOrder.Ascending), StatusCode) }
+                ),
+                R
+            )
+        Default: =gblFilter.Status
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        BorderColor: =ThemeBorderStrong
+        OnChange: |
+            =Set(gblFilter, Patch(gblFilter, { Status: Self.Selected.Value, Preset: "" }));
+            Set(gblRegPage, 1)
+
+    cboCustomer As combobox:
+        X: =drpStatus.X + drpStatus.Width + ThemeSpace2
+        Y: =txtSearch.Y
+        Width: =200
+        Height: =32
+        Items: =SortByColumns(Filter('11_Customers', IsActive = true), "Title", SortOrder.Ascending)
+        SearchFields: =["Title", "CustomerCode"]
+        DisplayFields: =["Title"]
+        IsSearchable: =true
+        SelectMultiple: =false
+        InputTextPlaceholder: ="Customer"
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        OnChange: |
+            =Set(gblFilter, Patch(gblFilter, { Customer: Coalesce(Self.Selected.Title, ""), Preset: "" }));
+            Set(gblRegPage, 1)
+
+    cboBank As combobox:
+        X: =cboCustomer.X + cboCustomer.Width + ThemeSpace2
+        Y: =txtSearch.Y
+        Width: =180
+        Height: =32
+        Items: =SortByColumns(Filter('12_Banks', IsActive = true, CanIssue = true), "Title", SortOrder.Ascending)
+        SearchFields: =["Title"]
+        DisplayFields: =["Title"]
+        IsSearchable: =true
+        SelectMultiple: =false
+        InputTextPlaceholder: ="Issuing bank"
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        OnChange: |
+            =Set(gblFilter, Patch(gblFilter, { Bank: Coalesce(Self.Selected.Title, ""), Preset: "" }));
+            Set(gblRegPage, 1)
+
+    btnAdvanced As button:
+        X: =recFilterBar.X + recFilterBar.Width - 230
+        Y: =txtSearch.Y
+        Width: =110
+        Height: =32
+        Text: =If(gblShowAdvanced, "Fewer filters", "More filters")
+        Fill: =RGBA(0, 0, 0, 0)
+        HoverFill: =ThemeSurfaceHover
+        Color: =ThemeAccent
+        BorderThickness: =0
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        OnSelect: =Set(gblShowAdvanced, !gblShowAdvanced)
+
+    btnClear As button:
+        X: =recFilterBar.X + recFilterBar.Width - 110
+        Y: =txtSearch.Y
+        Width: =98
+        Height: =32
+        Text: ="Clear all"
+        Fill: =RGBA(0, 0, 0, 0)
+        HoverFill: =ThemeSurfaceHover
+        Color: =ThemeTextSecondary
+        BorderColor: =ThemeBorderStrong
+        BorderThickness: =1
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        # One assignment resets every criterion, which is only possible because the whole
+        # filter state lives in one record.
+        OnSelect: |
+            =Set(gblFilter, PresetFilter("ACTIVE", false));
+            Reset(txtSearch);
+            Reset(cboCustomer);
+            Reset(cboBank);
+            Reset(drpStatus);
+            Set(gblRegPage, 1)
+
+    # --- advanced row -------------------------------------------------------
+    cboCurrency As combobox:
+        X: =txtSearch.X
+        Y: =txtSearch.Y + 40
+        Width: =120
+        Height: =32
+        Visible: =gblShowAdvanced
+        Items: =colCurrencies
+        SearchFields: =["Title"]
+        DisplayFields: =["Title"]
+        SelectMultiple: =false
+        InputTextPlaceholder: ="Currency"
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        OnChange: |
+            =Set(gblFilter, Patch(gblFilter, { Currency: Coalesce(Self.Selected.Title, "") }))
+
+    cboCountry As combobox:
+        X: =cboCurrency.X + cboCurrency.Width + ThemeSpace2
+        Y: =cboCurrency.Y
+        Width: =160
+        Height: =32
+        Visible: =gblShowAdvanced
+        Items: =SortByColumns(Filter('13_Countries', IsActive = true), "Title", SortOrder.Ascending)
+        SearchFields: =["Title"]
+        DisplayFields: =["Title"]
+        SelectMultiple: =false
+        InputTextPlaceholder: ="Country"
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        OnChange: |
+            =Set(gblFilter, Patch(gblFilter, { Country: Coalesce(Self.Selected.Title, "") }))
+
+    cboOfficer As combobox:
+        X: =cboCountry.X + cboCountry.Width + ThemeSpace2
+        Y: =cboCurrency.Y
+        Width: =180
+        Height: =32
+        Visible: =gblShowAdvanced
+        Items: =SortByColumns(Filter('17_Users', IsActive = true), "Title", SortOrder.Ascending)
+        SearchFields: =["Title", "UserEmail"]
+        DisplayFields: =["Title"]
+        SelectMultiple: =false
+        InputTextPlaceholder: ="Responsible officer"
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        OnChange: |
+            =Set(gblFilter, Patch(gblFilter, { Officer: Coalesce(Self.Selected.UserEmail, "") }))
+
+    txtAmountFrom As text:
+        X: =cboOfficer.X + cboOfficer.Width + ThemeSpace2
+        Y: =cboCurrency.Y
+        Width: =110
+        Height: =32
+        Visible: =gblShowAdvanced
+        HintText: ="Amount from"
+        Format: =TextFormat.Number
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        BorderColor: =ThemeBorderStrong
+        OnChange: |
+            =Set(gblFilter, Patch(gblFilter, { AmountFrom: Value(Self.Value) }))
+
+    txtAmountTo As text:
+        X: =txtAmountFrom.X + txtAmountFrom.Width + ThemeSpace2
+        Y: =cboCurrency.Y
+        Width: =110
+        Height: =32
+        Visible: =gblShowAdvanced
+        HintText: ="Amount to"
+        Format: =TextFormat.Number
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        BorderColor: =ThemeBorderStrong
+        OnChange: |
+            =Set(gblFilter, Patch(gblFilter, { AmountTo: Value(Self.Value) }))
+
+    dpExpiryFrom As datepicker:
+        X: =txtAmountTo.X + txtAmountTo.Width + ThemeSpace2
+        Y: =cboCurrency.Y
+        Width: =140
+        Height: =32
+        Visible: =gblShowAdvanced
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        OnChange: |
+            =Set(gblFilter, Patch(gblFilter, { ExpiryFrom: Self.SelectedDate }))
+
+    dpExpiryTo As datepicker:
+        X: =dpExpiryFrom.X + dpExpiryFrom.Width + ThemeSpace2
+        Y: =cboCurrency.Y
+        Width: =140
+        Height: =32
+        Visible: =gblShowAdvanced
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        OnChange: |
+            =Set(gblFilter, Patch(gblFilter, { ExpiryTo: Self.SelectedDate }))
+
+    # -------------------------------------------------------------------------
+    # Result summary and paging
+    # -------------------------------------------------------------------------
+    lblResultCount As label:
+        X: =ContentX
+        Y: =recFilterBar.Y + recFilterBar.Height + ThemeSpace2
+        Width: =500
+        Height: =24
+        Text: |
+            ="Showing " & CountRows(galRegister.AllItems) & " of " & RegisterPageSize &
+             " per page  ·  page " & gblRegPage
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =ThemeTextMuted
+        VerticalAlign: =VerticalAlign.Middle
+        PaddingLeft: =0
+
+    btnPrevPage As button:
+        X: =ContentX + ContentWidth - 200
+        Y: =lblResultCount.Y
+        Width: =90
+        Height: =26
+        Text: ="Previous"
+        DisplayMode: =If(gblRegPage <= 1, DisplayMode.Disabled, DisplayMode.Edit)
+        Fill: =ThemeSurface
+        HoverFill: =ThemeSurfaceHover
+        Color: =ThemeAccent
+        BorderColor: =ThemeBorderStrong
+        BorderThickness: =1
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        OnSelect: =Set(gblRegPage, Max(1, gblRegPage - 1))
+
+    btnNextPage As button:
+        X: =ContentX + ContentWidth - 100
+        Y: =lblResultCount.Y
+        Width: =90
+        Height: =26
+        Text: ="Next"
+        DisplayMode: |
+            =If(CountRows(galRegister.AllItems) < RegisterPageSize, DisplayMode.Disabled, DisplayMode.Edit)
+        Fill: =ThemeSurface
+        HoverFill: =ThemeSurfaceHover
+        Color: =ThemeAccent
+        BorderColor: =ThemeBorderStrong
+        BorderThickness: =1
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        OnSelect: =Set(gblRegPage, gblRegPage + 1)
+
+    # -------------------------------------------------------------------------
+    # Column headers. Clicking a header sorts; only indexed columns are offered,
+    # because sorting on an unindexed column is where SharePoint registers fall over.
+    # -------------------------------------------------------------------------
+    recHeader As rectangle:
+        X: =ContentX
+        Y: =lblResultCount.Y + 30
+        Width: =ContentWidth
+        Height: =36
+        Fill: =ThemeSurfaceAlt
+        BorderColor: =ThemeBorder
+        BorderThickness: =1
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+
+    galHeader As gallery:
+        X: =recHeader.X
+        Y: =recHeader.Y
+        Width: =recHeader.Width
+        Height: =recHeader.Height
+        Layout: =Layout.Horizontal
+        TemplateSize: =recHeader.Width / 11
+        TemplatePadding: =0
+        ShowScrollbar: =false
+        DelayItemLoading: =false
+        # Weight drives the proportional column widths used by both this header and the
+        # data rows below, so they cannot drift apart.
+        Items: |
+            =Table(
+                { Field: "LCNumber",          Label: "LC Number",    Sortable: true,  Align: "L", Weight: 1.3 },
+                { Field: "CustomerName",      Label: "Customer",     Sortable: true,  Align: "L", Weight: 1.6 },
+                { Field: "IssuingBankName",   Label: "Issuing Bank", Sortable: true,  Align: "L", Weight: 1.3 },
+                { Field: "CurrencyCode",      Label: "Ccy",          Sortable: true,  Align: "L", Weight: 0.4 },
+                { Field: "LCAmount",          Label: "LC Amount",    Sortable: true,  Align: "R", Weight: 1.0 },
+                { Field: "OutstandingAmount", Label: "Outstanding",  Sortable: true,  Align: "R", Weight: 1.0 },
+                { Field: "ReceivedDate",      Label: "Received",     Sortable: true,  Align: "L", Weight: 0.8 },
+                { Field: "LatestShipmentDate", Label: "Latest Ship", Sortable: true,  Align: "L", Weight: 0.8 },
+                { Field: "ExpiryDate",        Label: "Expiry",       Sortable: true,  Align: "L", Weight: 0.8 },
+                { Field: "LCStatus",          Label: "Status",       Sortable: true,  Align: "L", Weight: 1.0 },
+                { Field: "Modified",          Label: "Updated",      Sortable: false, Align: "L", Weight: 0.8 }
+            )
+
+        btnHeader As button:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight
+            Text: =""
+            Fill: =RGBA(0, 0, 0, 0)
+            HoverFill: =If(ThisItem.Sortable, ThemeSurfaceHover, RGBA(0, 0, 0, 0))
+            BorderThickness: =0
+            DisplayMode: =If(ThisItem.Sortable, DisplayMode.Edit, DisplayMode.View)
+            AccessibleLabel: ="Sort by " & ThisItem.Label
+            OnSelect: |
+                =Set(
+                    gblFilter,
+                    Patch(
+                        gblFilter,
+                        {
+                            SortBy: ThisItem.Field,
+                            SortDesc: If(gblFilter.SortBy = ThisItem.Field, !gblFilter.SortDesc, false)
+                        }
+                    )
+                );
+                Set(gblRegPage, 1)
+
+        lblHeader As label:
+            X: =8
+            Y: =0
+            Width: =Parent.TemplateWidth - 24
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.Label
+            Align: =If(ThisItem.Align = "R", Align.Right, Align.Left)
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: =FontWeight.Semibold
+            Color: |
+                =If(gblFilter.SortBy = ThisItem.Field, ThemeAccent, ThemeTextSecondary)
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+            PaddingRight: =0
+            DisplayMode: =DisplayMode.View
+
+        icoSort As icon:
+            Icon: =If(gblFilter.SortDesc, Icon.ChevronDown, Icon.ChevronUp)
+            X: =Parent.TemplateWidth - 16
+            Y: =12
+            Width: =12
+            Height: =12
+            Color: =ThemeAccent
+            Visible: =gblFilter.SortBy = ThisItem.Field
+            DisplayMode: =DisplayMode.View
+
+    # -------------------------------------------------------------------------
+    # THE QUERY.
+    # One Filter, one SortByColumns, one FirstN/LastN page window. Everything the
+    # user can change funnels into this single delegable expression.
+    # -------------------------------------------------------------------------
+    galRegister As gallery:
+        X: =ContentX
+        Y: =recHeader.Y + recHeader.Height
+        Width: =ContentWidth
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        TemplateSize: =ThemeRowHeight
+        TemplatePadding: =0
+        ShowScrollbar: =true
+        DelayItemLoading: =true
+        LoadingSpinner: =LoadingSpinner.Data
+        Items: |
+            =With(
+                {
+                    f: gblFilter,
+                    skip: (gblRegPage - 1) * RegisterPageSize
+                },
+                LastN(
+                    FirstN(
+                        SortByColumns(
+                            If(
+                                f.IncludeClosed,
+                                Filter(
+                                    '01_ExportLCs',
+                                    StartsWith(LCNumber, f.Search) || StartsWith(OurReference, f.Search) ||
+                                        StartsWith(CustomerName, f.Search) || StartsWith(Title, f.Search),
+                                    StartsWith(LCStatus, f.Status),
+                                    StartsWith(CustomerName, f.Customer),
+                                    StartsWith(IssuingBankName, f.Bank),
+                                    StartsWith(CurrencyCode, f.Currency),
+                                    StartsWith(CountryName, f.Country),
+                                    StartsWith(ResponsibleOfficerEmail, f.Officer),
+                                    LCAmount >= Coalesce(f.AmountFrom, 0),
+                                    LCAmount <= Coalesce(f.AmountTo, AmountCeiling),
+                                    ExpiryDate >= Coalesce(f.ExpiryFrom, DateFloor),
+                                    ExpiryDate <= Coalesce(f.ExpiryTo, DateCeiling),
+                                    LatestShipmentDate >= Coalesce(f.ShipFrom, DateFloor),
+                                    LatestShipmentDate <= Coalesce(f.ShipTo, DateCeiling),
+                                    ReceivedDate >= Coalesce(f.ReceivedFrom, DateFloor),
+                                    MissingDocumentCount >= f.MinMissingDocs,
+                                    OpenDiscrepancyCount >= f.MinDiscrepancies
+                                ),
+                                Filter(
+                                    '01_ExportLCs',
+                                    IsClosed = false,
+                                    StartsWith(LCNumber, f.Search) || StartsWith(OurReference, f.Search) ||
+                                        StartsWith(CustomerName, f.Search) || StartsWith(Title, f.Search),
+                                    StartsWith(LCStatus, f.Status),
+                                    StartsWith(CustomerName, f.Customer),
+                                    StartsWith(IssuingBankName, f.Bank),
+                                    StartsWith(CurrencyCode, f.Currency),
+                                    StartsWith(CountryName, f.Country),
+                                    StartsWith(ResponsibleOfficerEmail, f.Officer),
+                                    LCAmount >= Coalesce(f.AmountFrom, 0),
+                                    LCAmount <= Coalesce(f.AmountTo, AmountCeiling),
+                                    ExpiryDate >= Coalesce(f.ExpiryFrom, DateFloor),
+                                    ExpiryDate <= Coalesce(f.ExpiryTo, DateCeiling),
+                                    LatestShipmentDate >= Coalesce(f.ShipFrom, DateFloor),
+                                    LatestShipmentDate <= Coalesce(f.ShipTo, DateCeiling),
+                                    ReceivedDate >= Coalesce(f.ReceivedFrom, DateFloor),
+                                    MissingDocumentCount >= f.MinMissingDocs,
+                                    OpenDiscrepancyCount >= f.MinDiscrepancies,
+                                    RequiresAction >= f.RequiresActionOnly
+                                )
+                            ),
+                            f.SortBy,
+                            If(f.SortDesc, SortOrder.Descending, SortOrder.Ascending)
+                        ),
+                        skip + RegisterPageSize
+                    ),
+                    RegisterPageSize
+                )
+            )
+        OnSelect: |
+            =Set(gblCurrentLC, ThisItem);
+            Set(gblWorkspaceTab, "Overview");
+            Navigate(scrLCWorkspace, ScreenTransition.CoverRight)
+
+        recRowBg As rectangle:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight
+            Fill: =ThemeSurface
+            BorderThickness: =0
+
+        recRowRule As rectangle:
+            X: =0
+            Y: =Parent.TemplateHeight - 1
+            Width: =Parent.TemplateWidth
+            Height: =1
+            Fill: =ThemeBorder
+
+        recRowFlag As rectangle:
+            X: =0
+            Y: =0
+            Width: =3
+            Height: =Parent.TemplateHeight
+            # A left flag rather than a red row: the row stays readable, the signal still lands.
+            Fill: |
+                =If(
+                    ThisItem.OpenDiscrepancyCount > 0, ThemeDanger,
+                    DaysUntil(ThisItem.ExpiryDate) < 0, ThemeDanger,
+                    DaysUntil(ThisItem.ExpiryDate) <= 7, ThemeWarning,
+                    DaysUntil(ThisItem.LatestShipmentDate) <= 7, ThemeWarning,
+                    ThisItem.MissingDocumentCount > 0, ThemeWarning,
+                    RGBA(0, 0, 0, 0)
+                )
+
+        lblColLC As label:
+            X: =8
+            Y: =0
+            Width: =(Parent.TemplateWidth / 11) * 1.3 - 8
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.LCNumber
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeAccent
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblColCustomer As label:
+            X: =lblColLC.X + lblColLC.Width
+            Y: =0
+            Width: =(Parent.TemplateWidth / 11) * 1.6
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.CustomerName
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            Color: =ThemeText
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblColBank As label:
+            X: =lblColCustomer.X + lblColCustomer.Width
+            Y: =0
+            Width: =(Parent.TemplateWidth / 11) * 1.3
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.IssuingBankName
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblColCcy As label:
+            X: =lblColBank.X + lblColBank.Width
+            Y: =0
+            Width: =(Parent.TemplateWidth / 11) * 0.4
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.CurrencyCode
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextMuted
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblColAmount As label:
+            X: =lblColCcy.X + lblColCcy.Width
+            Y: =0
+            Width: =(Parent.TemplateWidth / 11) * 1.0 - 8
+            Height: =Parent.TemplateHeight
+            Text: =Text(ThisItem.LCAmount, "[$-en-US]#,##0.00")
+            Align: =Align.Right
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            Color: =ThemeText
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingRight: =0
+
+        lblColOutstanding As label:
+            X: =lblColAmount.X + lblColAmount.Width + 8
+            Y: =0
+            Width: =(Parent.TemplateWidth / 11) * 1.0 - 8
+            Height: =Parent.TemplateHeight
+            Text: =Text(ThisItem.OutstandingAmount, "[$-en-US]#,##0.00")
+            Align: =Align.Right
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: =FontWeight.Semibold
+            Color: |
+                =If(ThisItem.OutstandingAmount <= 0, ThemeTextMuted, ThemeText)
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingRight: =0
+
+        lblColReceived As label:
+            X: =lblColOutstanding.X + lblColOutstanding.Width + 16
+            Y: =0
+            Width: =(Parent.TemplateWidth / 11) * 0.8
+            Height: =Parent.TemplateHeight
+            Text: =DateShort(ThisItem.ReceivedDate)
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblColShip As label:
+            X: =lblColReceived.X + lblColReceived.Width
+            Y: =0
+            Width: =(Parent.TemplateWidth / 11) * 0.8
+            Height: =Parent.TemplateHeight
+            Text: =DateShort(ThisItem.LatestShipmentDate)
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: |
+                =If(DaysUntil(ThisItem.LatestShipmentDate) <= 14, FontWeight.Semibold, FontWeight.Normal)
+            Color: =UrgencyColor(ThisItem.LatestShipmentDate)
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblColExpiry As label:
+            X: =lblColShip.X + lblColShip.Width
+            Y: =0
+            Width: =(Parent.TemplateWidth / 11) * 0.8
+            Height: =Parent.TemplateHeight
+            Text: =DateShort(ThisItem.ExpiryDate)
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: |
+                =If(DaysUntil(ThisItem.ExpiryDate) <= 30, FontWeight.Semibold, FontWeight.Normal)
+            Color: =UrgencyColor(ThisItem.ExpiryDate)
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        badgeRow As cmpStatusBadge:
+            X: =lblColExpiry.X + lblColExpiry.Width
+            Y: =10
+            Width: =(Parent.TemplateWidth / 11) * 1.0
+            Height: =24
+            Entity: ="ExportLC"
+            StatusCode: =ThisItem.LCStatus
+            BadgeWidth: =(Parent.TemplateWidth / 11) * 1.0 - 8
+
+        lblColUpdated As label:
+            X: =badgeRow.X + badgeRow.Width
+            Y: =0
+            Width: =(Parent.TemplateWidth / 11) * 0.8
+            Height: =Parent.TemplateHeight
+            Text: =Text(ThisItem.Modified, "dd mmm")
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: =ThemeTextMuted
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+    emptyRegister As cmpEmptyState:
+        X: =ContentX
+        Y: =galRegister.Y + 40
+        Width: =ContentWidth
+        Height: =200
+        Visible: =IsEmpty(galRegister.AllItems)
+        Title: ="No LCs match these filters"
+        Body: ="Try widening the date range, clearing the customer or bank filter, or including closed LCs."
+        ActionLabel: ="Clear all filters"
+        OnAction: |
+            =Set(gblFilter, PresetFilter("ACTIVE", false));
+            Set(gblRegPage, 1)

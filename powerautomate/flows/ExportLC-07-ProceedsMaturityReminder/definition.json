@@ -1,0 +1,445 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    },
+    "SiteUrl": {
+      "defaultValue": "https://CONTOSO.sharepoint.com/sites/ExportLCPortal",
+      "type": "String",
+      "metadata": {
+        "description": "Set this to the portal site collection URL before enabling the flow."
+      }
+    }
+  },
+  "triggers": {
+    "Every_weekday_morning": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "timeZone": "Arabian Standard Time",
+        "schedule": {
+          "hours": [
+            "7"
+          ],
+          "minutes": [
+            0
+          ]
+        }
+      },
+      "metadata": {
+        "comment": "Runs once a day. The flow is idempotent, so a manual re-run costs nothing."
+      }
+    }
+  },
+  "actions": {
+    "Get_reminder_offsets": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "18_WorkflowConfig",
+          "$filter": "Title eq 'ProceedsMaturityReminderDays' and IsActive eq 1",
+          "$top": 1
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      }
+    },
+    "Parse_offsets": {
+      "type": "Compose",
+      "inputs": "@split(coalesce(first(body('Get_reminder_offsets')?['value'])?['ConfigValue'], '30;14;7'), ';')",
+      "runAfter": {
+        "Get_reminder_offsets": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "comment": "A missing or deactivated config row falls back to 30;14;7 rather than sending nothing."
+      }
+    },
+    "Get_weekend_setting": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "18_WorkflowConfig",
+          "$filter": "Title eq 'NotificationSuppressWeekends'",
+          "$top": 1
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      },
+      "runAfter": {
+        "Parse_offsets": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Skip_weekend": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@toLower(coalesce(first(body('Get_weekend_setting')?['value'])?['ConfigValue'],'true'))",
+              "true"
+            ]
+          },
+          {
+            "or": [
+              {
+                "equals": [
+                  "@dayOfWeek(utcNow())",
+                  5
+                ]
+              },
+              {
+                "equals": [
+                  "@dayOfWeek(utcNow())",
+                  6
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Terminate_weekend": {
+          "type": "Terminate",
+          "inputs": {
+            "runStatus": "Succeeded"
+          },
+          "metadata": {
+            "comment": "Weekend suppression is configurable; reminders roll forward to Monday."
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "Get_weekend_setting": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Apply_to_each_offset": {
+      "type": "Foreach",
+      "foreach": "@outputs('Parse_offsets')",
+      "runAfter": {
+        "Skip_weekend": [
+          "Succeeded"
+        ]
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "repetitions": 1
+        }
+      },
+      "actions": {
+        "Target_date": {
+          "type": "Compose",
+          "inputs": "@formatDateTime(addDays(utcNow(), int(trim(items('Apply_to_each_offset')))), 'yyyy-MM-dd')"
+        },
+        "Get_records_due": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "07_Proceeds",
+              "$filter": "IsSettled eq 0 and MaturityDate ge '@{outputs('Target_date')}T00:00:00Z' and MaturityDate le '@{outputs('Target_date')}T23:59:59Z'",
+              "$top": 500
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Target_date": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Apply_to_each_record": {
+          "type": "Foreach",
+          "foreach": "@body('Get_records_due')?['value']",
+          "runAfter": {
+            "Get_records_due": [
+              "Succeeded"
+            ]
+          },
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 8
+            }
+          },
+          "actions": {
+            "Notification_key": {
+              "type": "Compose",
+              "inputs": "@{concat('ExportLC-07-ProceedsMaturityReminder:', items('Apply_to_each_record')?['Title'], ':', trim(items('Apply_to_each_offset')))}",
+              "metadata": {
+                "comment": "RuleCode:RecordRef:Offset. Uniqueness of this key is the whole idempotency mechanism."
+              }
+            },
+            "Check_already_sent": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "GetItems",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('SiteUrl')",
+                  "table": "26_NotificationLog",
+                  "$filter": "Title eq '@{outputs('Notification_key')}'",
+                  "$top": 1
+                },
+                "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+              },
+              "runtimeConfiguration": {
+                "paginationPolicy": {
+                  "minimumItemCount": 5000
+                }
+              },
+              "runAfter": {
+                "Notification_key": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "If_not_already_sent": {
+              "type": "If",
+              "expression": {
+                "equals": [
+                  "@length(body('Check_already_sent')?['value'])",
+                  0
+                ]
+              },
+              "runAfter": {
+                "Check_already_sent": [
+                  "Succeeded"
+                ]
+              },
+              "actions": {
+                "Resolve_recipient": {
+                  "type": "Compose",
+                  "inputs": "@{coalesce(items('Apply_to_each_record')?['AssignedToEmail'], '')}",
+                  "metadata": {
+                    "comment": "An unassigned record falls through to the escalation mailbox below rather than being dropped."
+                  }
+                },
+                "Get_fallback_recipient": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "GetItems",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                    },
+                    "parameters": {
+                      "dataset": "@parameters('SiteUrl')",
+                      "table": "18_WorkflowConfig",
+                      "$filter": "Title eq 'EscalationManagerEmail'",
+                      "$top": 1
+                    },
+                    "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+                  },
+                  "runtimeConfiguration": {
+                    "paginationPolicy": {
+                      "minimumItemCount": 5000
+                    }
+                  },
+                  "runAfter": {
+                    "Resolve_recipient": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Final_recipient": {
+                  "type": "Compose",
+                  "inputs": "@{if(empty(outputs('Resolve_recipient')), coalesce(first(body('Get_fallback_recipient')?['value'])?['ConfigValue'], ''), outputs('Resolve_recipient'))}",
+                  "runAfter": {
+                    "Get_fallback_recipient": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "If_recipient_known": {
+                  "type": "If",
+                  "expression": {
+                    "not": {
+                      "equals": [
+                        "@outputs('Final_recipient')",
+                        ""
+                      ]
+                    }
+                  },
+                  "runAfter": {
+                    "Final_recipient": [
+                      "Succeeded"
+                    ]
+                  },
+                  "actions": {
+                    "Send_reminder": {
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_office365",
+                          "operationId": "SendEmailV2",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                        },
+                        "parameters": {
+                          "emailMessage/To": "@{outputs('Final_recipient')}",
+                          "emailMessage/Subject": "Proceeds @{items('Apply_to_each_record')?['Title']} mature in @{items('Apply_to_each_offset')} day(s)",
+                          "emailMessage/Body": "<p>LC <strong>@{coalesce(items('Apply_to_each_record')?['LCNumber'], '')}</strong> matures on <strong>@{formatDateTime(items('Apply_to_each_record')?['MaturityDate'], 'dd MMM yyyy')}</strong>, in @{trim(items('Apply_to_each_offset'))} day(s).</p><p>Customer: @{coalesce(items('Apply_to_each_record')?['CustomerName'], 'not recorded')}<br/>Reference: @{coalesce(items('Apply_to_each_record')?['Title'], '')}</p><p>Open it in the Export LC Portal to see the current position.</p><p style='color:#8A99A8;font-size:12px'>Sent by the Export LC Portal. Reminder timing is configured in 18_WorkflowConfig under ProceedsMaturityReminderDays.</p>",
+                          "emailMessage/Importance": "@{if(lessOrEquals(int(trim(items('Apply_to_each_offset'))), 3), 'High', 'Normal')}"
+                        },
+                        "authentication": "@parameters('$connections')['shared_office365']['authentication']"
+                      }
+                    },
+                    "Create_task": {
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_sharepointonline",
+                          "operationId": "PostItem",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                        },
+                        "parameters": {
+                          "dataset": "@parameters('SiteUrl')",
+                          "table": "09_Tasks",
+                          "item": {
+                            "Title": "Proceeds maturity reminder: @{coalesce(items('Apply_to_each_record')?['Title'], '')}",
+                            "InternalLCID": "@{coalesce(items('Apply_to_each_record')?['InternalLCID'], '')}",
+                            "LCNumber": "@{coalesce(items('Apply_to_each_record')?['LCNumber'], '')}",
+                            "CustomerName": "@{coalesce(items('Apply_to_each_record')?['CustomerName'], '')}",
+                            "TaskCategory": "Collection",
+                            "AssignedToEmail": "@{outputs('Final_recipient')}",
+                            "Priority": "@{if(lessOrEquals(int(trim(items('Apply_to_each_offset'))), 3), 'High', 'Normal')}",
+                            "DueDate": "@{formatDateTime(items('Apply_to_each_record')?['MaturityDate'], 'yyyy-MM-dd')}",
+                            "TaskStatus": "Not Started",
+                            "IsOpen": true,
+                            "IsSystemGenerated": true,
+                            "GeneratedByRule": "ExportLC-07-ProceedsMaturityReminder",
+                            "TaskDescription": "Generated by ExportLC-07-ProceedsMaturityReminder at offset @{trim(items('Apply_to_each_offset'))} days."
+                          }
+                        },
+                        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+                      },
+                      "runAfter": {
+                        "Send_reminder": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "Log_notification": {
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_sharepointonline",
+                          "operationId": "PostItem",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                        },
+                        "parameters": {
+                          "dataset": "@parameters('SiteUrl')",
+                          "table": "26_NotificationLog",
+                          "item": {
+                            "Title": "@{outputs('Notification_key')}",
+                            "RuleCode": "ExportLC-07-ProceedsMaturityReminder",
+                            "EntityName": "07_Proceeds",
+                            "RecordReference": "@{coalesce(items('Apply_to_each_record')?['Title'], '')}",
+                            "InternalLCID": "@{coalesce(items('Apply_to_each_record')?['InternalLCID'], '')}",
+                            "RecipientEmail": "@{outputs('Final_recipient')}",
+                            "OffsetDays": "@{int(trim(items('Apply_to_each_offset')))}",
+                            "SentTimestamp": "@{utcNow()}",
+                            "SendStatus": "Sent",
+                            "PartitionKey": "@{formatDateTime(utcNow(), 'yyyy-MM')}"
+                          }
+                        },
+                        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+                      },
+                      "runAfter": {
+                        "Create_task": [
+                          "Succeeded",
+                          "Failed",
+                          "Skipped"
+                        ]
+                      }
+                    }
+                  },
+                  "else": {
+                    "actions": {
+                      "Log_suppressed": {
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "connectionName": "shared_sharepointonline",
+                            "operationId": "PostItem",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                          },
+                          "parameters": {
+                            "dataset": "@parameters('SiteUrl')",
+                            "table": "26_NotificationLog",
+                            "item": {
+                              "Title": "@{outputs('Notification_key')}",
+                              "RuleCode": "ExportLC-07-ProceedsMaturityReminder",
+                              "RecordReference": "@{coalesce(items('Apply_to_each_record')?['Title'], '')}",
+                              "SentTimestamp": "@{utcNow()}",
+                              "SendStatus": "Suppressed",
+                              "FailureReason": "No responsible officer on the record and no EscalationManagerEmail configured.",
+                              "PartitionKey": "@{formatDateTime(utcNow(), 'yyyy-MM')}"
+                            }
+                          },
+                          "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "outputs": {}
+}

@@ -1,0 +1,492 @@
+# =============================================================================
+# scrImport - Excel import
+# =============================================================================
+# Import is a four-step pipeline, never a single button:
+#
+#   1. Upload        - the workbook goes to ExportLCTemplates and a batch row is created.
+#   2. Validate      - FLOW-12 parses it, applies the same rules the form enforces, and
+#                      writes every row to 28_ImportStaging with a validation state.
+#   3. Preview       - this screen shows valid, warning, duplicate and rejected rows.
+#                      Nothing has touched the live register yet.
+#   4. Commit        - only an administrator (configurable) can commit, and only the
+#                      rows that passed. Rejected rows stay staged with their reasons.
+#
+# A committed batch keeps its staging rows, so a bad import can be identified and
+# reversed by batch id rather than hunted for by hand.
+# =============================================================================
+
+scrImport As screen:
+    Fill: =ThemeCanvas
+    OnVisible: |
+        =Set(gblNavSection, "ADMIN");
+        Set(gblAdminTab, "Import");
+        If(
+            IsBlank(gblImportBatch),
+            Set(gblImportBatch, First(SortByColumns('27_ImportBatches', "StartedAt", SortOrder.Descending)))
+        );
+        Set(gblStageFilter, "All")
+
+    navRail As cmpNavRail:
+        X: =0
+        Y: =0
+        Width: =RailWidth
+        Height: =Parent.Height
+        ActiveKey: ="ADMIN"
+        UserName: =gblUserName
+        RoleLabel: |
+            =Switch(gblRole, "ADMIN", "Administrator", "MANAGER", "Treasury Manager",
+                "OFFICER", "Treasury Officer", "REVIEWER", "Reviewer", "Read only")
+        OnNavigate: |
+            =Switch(
+                gblNavSection,
+                "HOME",      Navigate(scrDashboard, ScreenTransition.None),
+                "LCS",       Navigate(scrLCRegister, ScreenTransition.None),
+                "INVOICES",  Navigate(scrInvoices, ScreenTransition.None),
+                "SHIPMENTS", Navigate(scrShipments, ScreenTransition.None),
+                "PRESENT",   Navigate(scrPresentations, ScreenTransition.None),
+                "DOCS",      Navigate(scrDocuments, ScreenTransition.None),
+                "DISCREP",   Navigate(scrDiscrepancies, ScreenTransition.None),
+                "PROCEEDS",  Navigate(scrProceeds, ScreenTransition.None),
+                "CORRESP",   Navigate(scrCorrespondence, ScreenTransition.None),
+                "TASKS",     Navigate(scrTasks, ScreenTransition.None),
+                "REPORTS",   Navigate(scrReports, ScreenTransition.None),
+                "ADMIN",     Navigate(scrAdmin, ScreenTransition.None)
+            )
+    topBar As cmpTopBar:
+        X: =ContentX
+        Y: =0
+        Width: =ContentWidth
+        Height: =ThemeTopBarHeight
+        TitleText: ="Excel import"
+        Breadcrumb: ="Administration  /  Import"
+        ShowSearch: =false
+        ShowBack: =true
+        OnBack: =Navigate(scrAdmin, ScreenTransition.None)
+        ShowPrimary: =false
+
+    # --- step rail ----------------------------------------------------------
+    galSteps As gallery:
+        X: =ContentX
+        Y: =ThemeTopBarHeight + ThemeSpace3
+        Width: =ContentWidth
+        Height: =56
+        Layout: =Layout.Horizontal
+        TemplateSize: =ContentWidth / 4
+        TemplatePadding: =0
+        ShowScrollbar: =false
+        DelayItemLoading: =false
+        Items: |
+            =Table(
+                { N: 1, Label: "Upload workbook",  Sub: "Template or existing tracker" },
+                { N: 2, Label: "Validate",         Sub: "Same rules as the form" },
+                { N: 3, Label: "Preview",          Sub: "Nothing written yet" },
+                { N: 4, Label: "Commit",           Sub: "Valid rows only" }
+            )
+
+        recStepDot As circle:
+            X: =ThemeSpace3
+            Y: =18
+            Width: =20
+            Height: =20
+            Fill: |
+                =If(
+                    ThisItem.N <= Coalesce(
+                        Switch(
+                            gblImportBatch.BatchStatus,
+                            "Uploaded", 1, "Validating", 2, "Preview Ready", 3,
+                            "Committing", 4, "Committed", 4, 1
+                        ), 1
+                    ),
+                    ThemeAccent, ThemeSurface
+                )
+            BorderColor: =ThemeAccent
+            BorderThickness: =2
+
+        lblStepNum As label:
+            X: =ThemeSpace3
+            Y: =18
+            Width: =20
+            Height: =20
+            Text: =Text(ThisItem.N)
+            Align: =Align.Center
+            VerticalAlign: =VerticalAlign.Middle
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            FontWeight: =FontWeight.Semibold
+            Color: |
+                =If(
+                    ThisItem.N <= Coalesce(
+                        Switch(gblImportBatch.BatchStatus, "Uploaded", 1, "Validating", 2,
+                               "Preview Ready", 3, "Committing", 4, "Committed", 4, 1), 1
+                    ),
+                    ThemeTextInverse, ThemeAccent
+                )
+            PaddingLeft: =0
+
+        lblStepLabel As label:
+            X: =ThemeSpace3 + 28
+            Y: =12
+            Width: =Parent.TemplateWidth - 40
+            Height: =20
+            Text: =ThisItem.Label
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeText
+            PaddingLeft: =0
+
+        lblStepSub As label:
+            X: =ThemeSpace3 + 28
+            Y: =31
+            Width: =Parent.TemplateWidth - 40
+            Height: =16
+            Text: =ThisItem.Sub
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: =ThemeTextMuted
+            PaddingLeft: =0
+
+    # --- batch summary ------------------------------------------------------
+    recBatchCard As rectangle:
+        X: =ContentX
+        Y: =galSteps.Y + galSteps.Height + ThemeSpace2
+        Width: =ContentWidth
+        Height: =92
+        Fill: =ThemeSurface
+        BorderColor: =ThemeBorder
+        BorderThickness: =1
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+
+    lblBatchTitle As label:
+        X: =recBatchCard.X + ThemeSpace4
+        Y: =recBatchCard.Y + ThemeSpace3
+        Width: =520
+        Height: =22
+        Text: |
+            =If(
+                IsBlank(gblImportBatch),
+                "No import batch yet",
+                "Batch " & gblImportBatch.Title & "  ·  " & Coalesce(gblImportBatch.SourceFileName, "no file") &
+                "  ·  " & gblImportBatch.BatchStatus
+            )
+        Font: =ThemeFont
+        Size: =ThemeSizeHeading
+        FontWeight: =FontWeight.Semibold
+        Color: =ThemeText
+        PaddingLeft: =0
+
+    galBatchCounts As gallery:
+        X: =recBatchCard.X + ThemeSpace4
+        Y: =lblBatchTitle.Y + 28
+        Width: =recBatchCard.Width - (ThemeSpace4 * 2) - 300
+        Height: =34
+        Layout: =Layout.Horizontal
+        TemplateSize: =140
+        TemplatePadding: =0
+        ShowScrollbar: =false
+        DelayItemLoading: =false
+        Items: |
+            =Table(
+                { L: "Read",      V: Coalesce(gblImportBatch.RowsRead, 0),      C: ThemeTextSecondary },
+                { L: "Valid",     V: Coalesce(gblImportBatch.RowsValid, 0),     C: ThemeSuccess },
+                { L: "Warnings",  V: Coalesce(gblImportBatch.RowsWarning, 0),   C: ThemeWarning },
+                { L: "Duplicates", V: Coalesce(gblImportBatch.DuplicatesFound, 0), C: ThemeWarning },
+                { L: "Rejected",  V: Coalesce(gblImportBatch.RowsRejected, 0),  C: ThemeDanger },
+                { L: "Committed", V: Coalesce(gblImportBatch.RowsCommitted, 0), C: ThemeAccent }
+            )
+
+        lblCountV As label:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =20
+            Text: =Text(ThisItem.V)
+            Font: =ThemeFont
+            Size: =ThemeSizeHeading
+            FontWeight: =FontWeight.Semibold
+            Color: =ThisItem.C
+            PaddingLeft: =0
+
+        lblCountL As label:
+            X: =0
+            Y: =18
+            Width: =Parent.TemplateWidth
+            Height: =14
+            Text: =ThisItem.L
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: =ThemeTextMuted
+            PaddingLeft: =0
+
+    btnDownloadTemplate As button:
+        X: =recBatchCard.X + recBatchCard.Width - 460
+        Y: =recBatchCard.Y + ThemeSpace3
+        Width: =140
+        Height: =32
+        Text: ="Get template"
+        Fill: =ThemeSurface
+        HoverFill: =ThemeSurfaceHover
+        Color: =ThemeAccent
+        BorderColor: =ThemeBorderStrong
+        BorderThickness: =1
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        OnSelect: |
+            =Launch(
+                LookUp(ExportLCTemplates, TemplateCode = "IMPORT_LC").'Link to item',
+                {}, LaunchTarget.New
+            )
+
+    btnStartImport As button:
+        X: =recBatchCard.X + recBatchCard.Width - 310
+        Y: =recBatchCard.Y + ThemeSpace3
+        Width: =140
+        Height: =32
+        Text: ="Upload and validate"
+        Visible: =CanCommitImport
+        Fill: =ThemeSurface
+        HoverFill: =ThemeSurfaceHover
+        Color: =ThemeAccent
+        BorderColor: =ThemeBorderStrong
+        BorderThickness: =1
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        # The flow does the parsing. A canvas app cannot read an xlsx reliably, and putting
+        # the parser in a flow also means a scheduled or emailed import can reuse it.
+        OnSelect: |
+            =Set(
+                gblImportBatch,
+                Patch(
+                    '27_ImportBatches', Defaults('27_ImportBatches'),
+                    {
+                        Title: "IMP-" & Text(Now(), "yyyymmdd-hhmmss"),
+                        ImportType: "Combined Tracker",
+                        ImportedByEmail: User().Email,
+                        StartedAt: Now(),
+                        BatchStatus: "Uploaded"
+                    }
+                )
+            );
+            'ExportLC-12-ImportValidate'.Run(gblImportBatch.Title);
+            Notify("Validation started. The preview fills in as rows are staged.", NotificationType.Information, 5000)
+
+    btnCommit As button:
+        X: =recBatchCard.X + recBatchCard.Width - 160
+        Y: =recBatchCard.Y + ThemeSpace3
+        Width: =140 + ThemeSpace2
+        Height: =32
+        Text: ="Commit valid rows"
+        Fill: =ThemeAccent
+        HoverFill: =ThemeAccentHover
+        DisabledFill: =ThemeMutedSoft
+        Color: =ThemeTextInverse
+        DisabledColor: =ThemeTextMuted
+        BorderThickness: =0
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        FontWeight: =FontWeight.Semibold
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        DisplayMode: |
+            =If(
+                CanCommitImport && gblImportBatch.BatchStatus = "Preview Ready" &&
+                Coalesce(gblImportBatch.RowsValid, 0) > 0,
+                DisplayMode.Edit, DisplayMode.Disabled
+            )
+        OnSelect: |
+            ='ExportLC-13-ImportCommit'.Run(gblImportBatch.Title);
+            Set(gblImportBatch, LookUp('27_ImportBatches', ID = gblImportBatch.ID));
+            Notify("Commit started. Rejected rows stay staged with their reasons.", NotificationType.Success, 5000)
+
+    # --- staging preview ----------------------------------------------------
+    galStageFilter As gallery:
+        X: =ContentX
+        Y: =recBatchCard.Y + recBatchCard.Height + ThemeSpace3
+        Width: =ContentWidth
+        Height: =30
+        Layout: =Layout.Horizontal
+        TemplateSize: =140
+        TemplatePadding: =0
+        ShowScrollbar: =false
+        DelayItemLoading: =false
+        Items: |
+            =Table(
+                { Key: "All",       Label: "All rows" },
+                { Key: "Rejected",  Label: "Rejected" },
+                { Key: "Duplicate", Label: "Duplicates" },
+                { Key: "Warning",   Label: "Warnings" },
+                { Key: "Valid",     Label: "Valid" },
+                { Key: "Committed", Label: "Committed" }
+            )
+
+        btnStageFilter As button:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth - ThemeSpace2
+            Height: =28
+            Text: =ThisItem.Label
+            Fill: =If(gblStageFilter = ThisItem.Key, ThemeAccentSoft, ThemeSurface)
+            HoverFill: =ThemeSurfaceHover
+            Color: =If(gblStageFilter = ThisItem.Key, ThemeAccent, ThemeTextSecondary)
+            BorderColor: =If(gblStageFilter = ThisItem.Key, ThemeAccent, ThemeBorderStrong)
+            BorderThickness: =1
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            RadiusTopLeft: =14
+            RadiusTopRight: =14
+            RadiusBottomLeft: =14
+            RadiusBottomRight: =14
+            OnSelect: =Set(gblStageFilter, ThisItem.Key)
+
+    galStaging As gallery:
+        X: =ContentX
+        Y: =galStageFilter.Y + 38
+        Width: =ContentWidth
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        TemplateSize: =52
+        TemplatePadding: =0
+        ShowScrollbar: =true
+        DelayItemLoading: =true
+        Items: |
+            =SortByColumns(
+                Filter(
+                    '28_ImportStaging',
+                    ImportBatchId = gblImportBatch.Title,
+                    StartsWith(ValidationState, If(gblStageFilter = "All", "", gblStageFilter))
+                ),
+                "SourceRowNumber", SortOrder.Ascending
+            )
+
+        recStBg As rectangle:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight - 1
+            Fill: |
+                =Switch(
+                    ThisItem.ValidationState,
+                    "Rejected", ThemeDangerSoft,
+                    "Duplicate", ThemeWarningSoft,
+                    "Warning", ThemeWarningSoft,
+                    "Committed", ThemeSuccessSoft,
+                    ThemeSurface
+                )
+
+        recStRule As rectangle:
+            X: =0
+            Y: =Parent.TemplateHeight - 1
+            Width: =Parent.TemplateWidth
+            Height: =1
+            Fill: =ThemeBorder
+
+        lblStRow As label:
+            X: =ThemeSpace3
+            Y: =0
+            Width: =70
+            Height: =Parent.TemplateHeight
+            Text: ="Row " & Text(ThisItem.SourceRowNumber)
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextMuted
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblStKey As label:
+            X: =90
+            Y: =6
+            Width: =Parent.TemplateWidth * 0.24
+            Height: =20
+            Text: =ThisItem.Title
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeText
+            PaddingLeft: =0
+
+        lblStTarget As label:
+            X: =90
+            Y: =26
+            Width: =Parent.TemplateWidth * 0.24
+            Height: =16
+            Text: =ThisItem.TargetList
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: =ThemeTextMuted
+            PaddingLeft: =0
+
+        lblStMessages As label:
+            X: =Parent.TemplateWidth * 0.24 + 100
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.50
+            Height: =Parent.TemplateHeight
+            Text: |
+                =Coalesce(
+                    ThisItem.ValidationMessages,
+                    If(ThisItem.ValidationState = "Valid", "Ready to commit.", "")
+                )
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: |
+                =Switch(ThisItem.ValidationState, "Rejected", ThemeDanger,
+                        "Duplicate", ThemeWarning, "Warning", ThemeWarning, ThemeTextSecondary)
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        drpDupAction As dropdown:
+            X: =Parent.TemplateWidth - 300
+            Y: =12
+            Width: =140
+            Height: =28
+            Visible: =ThisItem.ValidationState = "Duplicate" && CanCommitImport
+            Items: =["Skip", "Update Existing", "Create New"]
+            Default: =ThisItem.DuplicateAction
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            OnChange: |
+                =Patch(
+                    '28_ImportStaging',
+                    LookUp('28_ImportStaging', ID = ThisItem.ID),
+                    { DuplicateAction: Self.Selected.Value }
+                )
+
+        lblStState As label:
+            X: =Parent.TemplateWidth - 140
+            Y: =0
+            Width: =130
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.ValidationState
+            Align: =Align.Right
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: =FontWeight.Semibold
+            Color: |
+                =Switch(ThisItem.ValidationState, "Rejected", ThemeDanger,
+                        "Duplicate", ThemeWarning, "Warning", ThemeWarning,
+                        "Committed", ThemeSuccess, ThemeTextSecondary)
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingRight: =0
+
+    emptyStaging As cmpEmptyState:
+        X: =ContentX
+        Y: =galStaging.Y + 30
+        Width: =ContentWidth
+        Height: =180
+        Visible: =IsEmpty(galStaging.AllItems)
+        Title: ="No staged rows"
+        Body: |
+            ="Upload a workbook to start. Nothing reaches the live register until you press Commit, " &
+             "and rejected rows are never committed."
+        ActionLabel: =""

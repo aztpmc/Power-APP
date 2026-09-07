@@ -1,0 +1,524 @@
+# =============================================================================
+# scrCorrespondenceForm - correspondence item form
+# =============================================================================
+# Log an item of bank correspondence and link it to the LC, amendment, presentation, discrepancy or payment it concerns.
+#
+# Shared mechanics with every other record form in the portal:
+#   * A working copy (gblDraft) is edited, never the datasource directly, so validation
+#     can see the whole prospective record before anything is written.
+#   * Validation is one expression producing a list of messages; Save is disabled while
+#     that list is non-empty.
+#   * A status change is checked against 16_StatusMaster before it is allowed.
+#   * Derived values are computed on save, not typed.
+#   * One audit row per changed critical field, sharing one correlation id.
+# =============================================================================
+
+scrCorrespondenceForm As screen:
+    Fill: =ThemeCanvas
+    OnVisible: |
+        =Set(gblCorrelation, GUID());
+        // The parent LC is needed for validation (tolerance, expiry, utilisation) and for
+        // the denormalised keys written on save.
+        Set(
+            gblParentLC,
+            Coalesce(
+                LookUp('01_ExportLCs', ID = Coalesce(gblChildContext.LCItemId, gblEditChild.LCItemId, -1)),
+                gblCurrentLC
+            )
+        );
+        Set(gblOriginal, gblEditChild);
+        Set(
+            gblDraft,
+            If(
+                gblFormMode = "New",
+                {
+                    Title: "",
+                    Direction: "Incoming",
+                    CorrespondenceDate: Blank(),
+                    BankName: "",
+                    ContactPerson: "",
+                    ReferenceNumber: "",
+                    CorrespondenceType: "LC Advice",
+                    CorrespondenceDescription: "",
+                    LinkedEntity: "LC",
+                    LinkedEntityRef: "",
+                    ActionRequired: false,
+                    ActionDescription: "",
+                    DueDate: Blank(),
+                    RespondedDate: Blank(),
+                    CorrespondenceStatus: "New"
+                },
+                gblEditChild
+            )
+        );
+        Set(gblShowErrors, false)
+
+    lblValidationSource As label:
+        X: =-1000
+        Y: =-1000
+        Width: =1
+        Height: =1
+        Visible: =false
+        Text: |
+            =Concat(
+                Filter(
+                    Table(
+                        { M: "Subject is required.",
+                          F: Len(Trim(Coalesce(gblDraft.Title, ""))) = 0 },
+                        { M: "Date is required.",
+                          F: IsBlank(gblDraft.CorrespondenceDate) },
+                        { M: "Correspondence cannot be dated in the future.",
+                          F: !IsBlank(gblDraft.CorrespondenceDate) && gblDraft.CorrespondenceDate > Today0 },
+                        { M: "An item marked as needing action needs a due date and a description of what is required.",
+                          F: gblDraft.ActionRequired && (IsBlank(gblDraft.DueDate) || Len(Trim(Coalesce(gblDraft.ActionDescription, ""))) = 0) },
+                        { M: "Responded date cannot be before the correspondence date.",
+                          F: !IsBlank(gblDraft.RespondedDate) && !IsBlank(gblDraft.CorrespondenceDate) && gblDraft.RespondedDate < gblDraft.CorrespondenceDate },
+                        { M: "An item marked Responded needs a responded date.",
+                          F: gblDraft.CorrespondenceStatus = "Responded" && IsBlank(gblDraft.RespondedDate) },
+                        { M: TransitionBlockReason("Correspondence", Coalesce(gblOriginal.CorrespondenceStatus, "New"), gblDraft.CorrespondenceStatus),
+                          F: gblFormMode = "Edit" && !CanTransition("Correspondence", Coalesce(gblOriginal.CorrespondenceStatus, "New"), gblDraft.CorrespondenceStatus) }
+                    ),
+                    F
+                ),
+                M,
+                Char(10)
+            )
+
+    topBar As cmpTopBar:
+        X: =ThemeSpace5
+        Y: =0
+        Width: =Parent.Width - (ThemeSpace5 * 2)
+        Height: =ThemeTopBarHeight
+        TitleText: |
+            =If(gblFormMode = "New", "New correspondence item", "Edit " & Coalesce(gblDraft.Title, "correspondence item"))
+        Breadcrumb: |
+            =Coalesce(gblParentLC.LCNumber, "No LC selected") & "  /  correspondence item"
+        ShowSearch: =false
+        ShowBack: =true
+        OnBack: =Back()
+        ShowPrimary: =false
+
+    # Creating from a module register rather than from an LC workspace: pick the parent
+    # first. Without it the record cannot be linked, and an unlinked child record is the
+    # one thing this data model must never contain.
+    cboParentLC As combobox:
+        X: =ThemeSpace5
+        Y: =ThemeTopBarHeight + ThemeSpace2
+        Width: =400
+        Height: =34
+        Visible: =IsBlank(gblChildContext) || IsBlank(gblChildContext.LCItemId)
+        Items: =SortByColumns(Filter('01_ExportLCs', IsClosed = false), "LCNumber", SortOrder.Ascending)
+        DisplayFields: =["LCNumber"]
+        SearchFields: =["LCNumber", "CustomerName", "OurReference"]
+        IsSearchable: =true
+        SelectMultiple: =false
+        InputTextPlaceholder: ="Select the LC this correspondence item belongs to"
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        OnChange: |
+            =Set(gblParentLC, Self.Selected);
+            Set(
+                gblChildContext,
+                {
+                    LCItemId: Self.Selected.ID,
+                    LCNumber: Self.Selected.LCNumber,
+                    InternalLCID: Self.Selected.Title,
+                    CustomerName: Self.Selected.CustomerName,
+                    CurrencyCode: Self.Selected.CurrencyCode
+                }
+            )
+
+    recErrors As rectangle:
+        X: =ThemeSpace5
+        Y: =If(cboParentLC.Visible, cboParentLC.Y + 42, ThemeTopBarHeight + ThemeSpace3)
+        Width: =Parent.Width - (ThemeSpace5 * 2)
+        Height: =lblErrors.Height + ThemeSpace4
+        Fill: =ThemeDangerSoft
+        BorderColor: =ThemeDanger
+        BorderThickness: =1
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        Visible: =gblShowErrors && Len(lblValidationSource.Text) > 0
+
+    lblErrors As label:
+        X: =recErrors.X + ThemeSpace4
+        Y: =recErrors.Y + ThemeSpace2
+        Width: =recErrors.Width - (ThemeSpace4 * 2)
+        Height: |
+            =(CountRows(Split(lblValidationSource.Text, Char(10))) * 20) + 8
+        Text: =lblValidationSource.Text
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        Color: =ThemeDanger
+        Visible: =recErrors.Visible
+        PaddingLeft: =0
+
+    galForm As gallery:
+        X: =ThemeSpace5
+        Y: |
+            =If(recErrors.Visible, recErrors.Y + recErrors.Height + ThemeSpace3,
+                If(cboParentLC.Visible, cboParentLC.Y + 42, ThemeTopBarHeight + ThemeSpace3))
+        Width: =Parent.Width - (ThemeSpace5 * 2)
+        Height: =Parent.Height - Self.Y - 72
+        TemplateSize: =64
+        TemplatePadding: =0
+        ShowScrollbar: =true
+        DelayItemLoading: =false
+        WrapCount: =If(IsCompact, 1, 3)
+        Items: |
+            =Table(
+                { K: "Title", L: "Subject *", T: "text", O: "" },
+                { K: "Direction", L: "Direction *", T: "choice", O: "Incoming,Outgoing" },
+                { K: "CorrespondenceDate", L: "Date *", T: "date", O: "" },
+                { K: "BankName", L: "Bank", T: "lookup", O: "bank" },
+                { K: "ContactPerson", L: "Contact", T: "text", O: "" },
+                { K: "ReferenceNumber", L: "Reference", T: "text", O: "" },
+                { K: "CorrespondenceType", L: "Type", T: "choice", O: "LC Advice,Amendment Advice,SWIFT MT700,SWIFT MT707,SWIFT MT730,SWIFT MT750,SWIFT MT752,SWIFT MT754,SWIFT MT799,Discrepancy Notice,Waiver Request,Acceptance Advice,Payment Advice,Charges Advice,Document Submission,Query,Reminder,Other" },
+                { K: "CorrespondenceDescription", L: "Description", T: "text", O: "" },
+                { K: "LinkedEntity", L: "Linked to", T: "choice", O: "LC,Amendment,Invoice,Shipment,Presentation,Discrepancy,Proceeds" },
+                { K: "LinkedEntityRef", L: "Linked reference", T: "text", O: "" },
+                { K: "ActionRequired", L: "Action required", T: "boolean", O: "" },
+                { K: "ActionDescription", L: "Action description", T: "text", O: "" },
+                { K: "DueDate", L: "Due date", T: "date", O: "" },
+                { K: "RespondedDate", L: "Responded date", T: "date", O: "" },
+                { K: "CorrespondenceStatus", L: "Status", T: "status", O: "" }
+            )
+
+        lblFieldLabel As label:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth - ThemeSpace4
+            Height: =18
+            Text: =ThisItem.L
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            PaddingLeft: =0
+
+        txtField As text:
+            X: =0
+            Y: =18
+            Width: =Parent.TemplateWidth - ThemeSpace4
+            Height: =32
+            Visible: =ThisItem.T in ["text", "number"]
+            Format: =If(ThisItem.T = "number", TextFormat.Number, TextFormat.Text)
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            BorderColor: =ThemeBorderStrong
+            FocusedBorderColor: =ThemeAccent
+            BorderThickness: =1
+            RadiusTopLeft: =4
+            RadiusTopRight: =4
+            RadiusBottomLeft: =4
+            RadiusBottomRight: =4
+            Default: |
+                =Switch(
+                    ThisItem.K,
+                    "Title", Coalesce(gblDraft.Title, ""),
+                    "ContactPerson", Coalesce(gblDraft.ContactPerson, ""),
+                    "ReferenceNumber", Coalesce(gblDraft.ReferenceNumber, ""),
+                    "CorrespondenceDescription", Coalesce(gblDraft.CorrespondenceDescription, ""),
+                    "LinkedEntityRef", Coalesce(gblDraft.LinkedEntityRef, ""),
+                    "ActionDescription", Coalesce(gblDraft.ActionDescription, ""),
+                    ""
+                )
+            OnChange: |
+                =Set(
+                    gblDraft,
+                    Switch(
+                        ThisItem.K,
+                        "Title", Patch(gblDraft, { Title: Trim(Self.Value) }),
+                        "ContactPerson", Patch(gblDraft, { ContactPerson: Trim(Self.Value) }),
+                        "ReferenceNumber", Patch(gblDraft, { ReferenceNumber: Trim(Self.Value) }),
+                        "CorrespondenceDescription", Patch(gblDraft, { CorrespondenceDescription: Trim(Self.Value) }),
+                        "LinkedEntityRef", Patch(gblDraft, { LinkedEntityRef: Trim(Self.Value) }),
+                        "ActionDescription", Patch(gblDraft, { ActionDescription: Trim(Self.Value) }),
+                        gblDraft
+                    )
+                )
+
+        dpField As datepicker:
+            X: =0
+            Y: =18
+            Width: =Parent.TemplateWidth - ThemeSpace4
+            Height: =32
+            Visible: =ThisItem.T = "date"
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            DefaultDate: |
+                =Switch(
+                    ThisItem.K,
+                    "CorrespondenceDate", gblDraft.CorrespondenceDate,
+                    "DueDate", gblDraft.DueDate,
+                    "RespondedDate", gblDraft.RespondedDate,
+                    Blank()
+                )
+            OnChange: |
+                =Set(
+                    gblDraft,
+                    Switch(
+                        ThisItem.K,
+                        "CorrespondenceDate", Patch(gblDraft, { CorrespondenceDate: Self.SelectedDate }),
+                        "DueDate", Patch(gblDraft, { DueDate: Self.SelectedDate }),
+                        "RespondedDate", Patch(gblDraft, { RespondedDate: Self.SelectedDate }),
+                        gblDraft
+                    )
+                )
+
+        tglField As toggle:
+            X: =0
+            Y: =20
+            Width: =80
+            Height: =28
+            Visible: =ThisItem.T = "boolean"
+            Default: |
+                =Switch(
+                    ThisItem.K,
+                    "ActionRequired", Coalesce(gblDraft.ActionRequired, false),
+                    false
+                )
+            OnChange: |
+                =Set(
+                    gblDraft,
+                    Switch(
+                        ThisItem.K,
+                        "ActionRequired", Patch(gblDraft, { ActionRequired: Self.Value }),
+                        gblDraft
+                    )
+                )
+
+        drpChoice As dropdown:
+            X: =0
+            Y: =18
+            Width: =Parent.TemplateWidth - ThemeSpace4
+            Height: =32
+            Visible: =ThisItem.T = "choice"
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            Items: =Split(ThisItem.O, ",")
+            Default: |
+                =Switch(
+                    ThisItem.K,
+                    "Direction", Coalesce(gblDraft.Direction, ""),
+                    "CorrespondenceType", Coalesce(gblDraft.CorrespondenceType, ""),
+                    "LinkedEntity", Coalesce(gblDraft.LinkedEntity, ""),
+                    ""
+                )
+            OnChange: |
+                =Set(
+                    gblDraft,
+                    Switch(
+                        ThisItem.K,
+                        "Direction", Patch(gblDraft, { Direction: Self.Selected.Value }),
+                        "CorrespondenceType", Patch(gblDraft, { CorrespondenceType: Self.Selected.Value }),
+                        "LinkedEntity", Patch(gblDraft, { LinkedEntity: Self.Selected.Value }),
+                        gblDraft
+                    )
+                )
+
+        # The status picker offers only the transitions 16_StatusMaster permits from the
+        # current status, so an illegal move is not presented in the first place - the
+        # validation rule behind it is the backstop, not the only control.
+        drpStatus As dropdown:
+            X: =0
+            Y: =18
+            Width: =Parent.TemplateWidth - ThemeSpace4
+            Height: =32
+            Visible: =ThisItem.T = "status"
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            Items: |
+                =If(
+                    gblFormMode = "New",
+                    SortByColumns(Filter(colStatus, EntityName = "Correspondence"), "SortOrder", SortOrder.Ascending),
+                    Filter(
+                        SortByColumns(Filter(colStatus, EntityName = "Correspondence"), "SortOrder", SortOrder.Ascending),
+                        CanTransition("Correspondence", Coalesce(gblOriginal.CorrespondenceStatus, "New"), StatusCode)
+                    )
+                )
+            Default: =gblDraft.CorrespondenceStatus
+            OnChange: |
+                =Set(gblDraft, Patch(gblDraft, { CorrespondenceStatus: Self.Selected.StatusCode }))
+
+        cboLookup As combobox:
+            X: =0
+            Y: =18
+            Width: =Parent.TemplateWidth - ThemeSpace4
+            Height: =32
+            Visible: =ThisItem.T = "lookup"
+            IsSearchable: =true
+            SelectMultiple: =false
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            DisplayFields: =["Title"]
+            SearchFields: =["Title"]
+            Items: |
+                =Switch(
+                    ThisItem.O,
+                    "currency",     colCurrencies,
+                    "incoterm",     colIncoterms,
+                    "doctype",      colDocTypes,
+                    "disccategory", colDiscCategories,
+                    "bank",         SortByColumns(Filter('12_Banks', IsActive = true), "Title", SortOrder.Ascending),
+                    "advisingbank", SortByColumns(Filter('12_Banks', IsActive = true, CanAdvise = true), "Title", SortOrder.Ascending),
+                    "port",         SortByColumns(Filter('22_Ports', IsActive = true), "Title", SortOrder.Ascending),
+                    "user",         SortByColumns(Filter('17_Users', IsActive = true), "Title", SortOrder.Ascending),
+                    Blank()
+                )
+            OnChange: |
+                =Set(
+                    gblDraft,
+                    Switch(
+                        ThisItem.K,
+                        "BankName", Patch(gblDraft, { BankName: Coalesce(Self.Selected.Title, Self.Selected.UserEmail, "") }),
+                        gblDraft
+                    )
+                )
+
+    recActionBar As rectangle:
+        X: =0
+        Y: =Parent.Height - 64
+        Width: =Parent.Width
+        Height: =64
+        Fill: =ThemeSurface
+        BorderColor: =ThemeBorder
+        BorderThickness: =1
+
+    lblSaveHint As label:
+        X: =ThemeSpace5
+        Y: =Parent.Height - 64
+        Width: =Parent.Width - 400
+        Height: =64
+        Text: |
+            =If(
+                IsBlank(gblChildContext) || IsBlank(gblChildContext.LCItemId),
+                "Select the LC this correspondence item belongs to before saving.",
+                If(
+                    Len(lblValidationSource.Text) > 0,
+                    CountRows(Split(lblValidationSource.Text, Char(10))) & " issue(s) to resolve before saving.",
+                    "Ready to save."
+                )
+            )
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =If(Len(lblValidationSource.Text) > 0, ThemeDanger, ThemeTextMuted)
+        VerticalAlign: =VerticalAlign.Middle
+        PaddingLeft: =0
+
+    btnCancel As button:
+        X: =Parent.Width - 280
+        Y: =Parent.Height - 48
+        Width: =120
+        Height: =34
+        Text: ="Cancel"
+        Fill: =ThemeSurface
+        HoverFill: =ThemeSurfaceHover
+        Color: =ThemeTextSecondary
+        BorderColor: =ThemeBorderStrong
+        BorderThickness: =1
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        OnSelect: =Back()
+
+    btnSave As button:
+        X: =Parent.Width - 150
+        Y: =Parent.Height - 48
+        Width: =150 - ThemeSpace5
+        Height: =34
+        Text: ="Save"
+        Fill: =ThemeAccent
+        HoverFill: =ThemeAccentHover
+        DisabledFill: =ThemeMutedSoft
+        Color: =ThemeTextInverse
+        DisabledColor: =ThemeTextMuted
+        BorderThickness: =0
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        FontWeight: =FontWeight.Semibold
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        DisplayMode: |
+            =If(
+                Len(lblValidationSource.Text) > 0 || !IsOfficer ||
+                IsBlank(gblChildContext) || IsBlank(gblChildContext.LCItemId),
+                DisplayMode.Disabled,
+                DisplayMode.Edit
+            )
+        OnSelect: |
+            =Set(gblShowErrors, true);
+            If(
+                Len(lblValidationSource.Text) > 0,
+                Notify("Resolve the listed issues before saving.", NotificationType.Error, 4000),
+                (
+                    Set(gblCorrelation, GUID());
+                    Set(
+                        gblSaved,
+                        Patch(
+                            '08_Correspondence',
+                            If(gblFormMode = "New", Defaults('08_Correspondence'), gblOriginal),
+                            gblDraft,
+                            // Denormalised parent keys. Written on every save so a child row can
+                            // never drift away from its LC, and so every child query stays a
+                            // single indexed server-side filter.
+                            {
+                                LCItemId: gblChildContext.LCItemId,
+                                LCNumber: gblChildContext.LCNumber,
+                                InternalLCID: gblChildContext.InternalLCID
+                            },
+                            {
+                            IsOpen: !Coalesce(
+                                LookUp(colStatus, EntityName = "Correspondence" && StatusCode = gblDraft.CorrespondenceStatus).IsTerminal,
+                                false
+                            ),
+                            ResponsibleUserEmail: Coalesce(gblOriginal.ResponsibleUserEmail, User().Email)
+                        }
+                        )
+                    );
+
+                    ForAll(
+                        Filter(
+                            Table(
+                                    { F: "CorrespondenceStatus", O: Coalesce(gblOriginal.CorrespondenceStatus, ""), N: Coalesce(gblDraft.CorrespondenceStatus, "") },
+                                    { F: "ActionRequired", O: Text(gblOriginal.ActionRequired), N: Text(gblDraft.ActionRequired) },
+                                    { F: "DueDate", O: DateShort(gblOriginal.DueDate), N: DateShort(gblDraft.DueDate) }
+                            ),
+                            O <> N
+                        ) As chg,
+                        Patch(
+                            '10_AuditLog', Defaults('10_AuditLog'),
+                            {
+                                Title: "Correspondence:" & gblSaved.Title & ":" & chg.F,
+                                EntityName: "Correspondence",
+                                RecordItemId: gblSaved.ID,
+                                RecordReference: gblSaved.Title,
+                                InternalLCID: gblChildContext.InternalLCID,
+                                LCNumber: gblChildContext.LCNumber,
+                                ActionType: If(gblFormMode = "New", "Create", "Update"),
+                                FieldName: chg.F,
+                                OldValue: chg.O,
+                                NewValue: chg.N,
+                                IsCriticalField: chg.F in Split(CfgT("CriticalAuditFields", ""), ";").Value,
+                                ActionByEmail: User().Email,
+                                ActionByName: User().FullName,
+                                ActionTimestamp: Now(),
+                                ActionSource: "Power App",
+                                CorrelationId: gblCorrelation,
+                                PartitionKey: Text(Today0, "yyyy-mm")
+                            }
+                        )
+                    );
+
+
+                    Set(gblCurrentLC, LookUp('01_ExportLCs', ID = gblChildContext.LCItemId));
+                    Notify("Saved.", NotificationType.Success, 2500);
+                    Back()
+                )
+            )

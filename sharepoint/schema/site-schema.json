@@ -1,0 +1,4961 @@
+{
+  "$comment": "Single source of truth for the Export LC Portal SharePoint architecture. Consumed by sharepoint/scripts/Provision-ExportLCPortal.ps1. Every list/library/field/view/index below is created idempotently: existing objects are inspected and left in place, never deleted or overwritten.",
+  "solution": {
+    "name": "Export LC Portal",
+    "version": "1.0.0",
+    "listPrefixConvention": "Display titles keep the requested NN_Name ordering; list URLs use clean names (Lists/ExportLCs) so Power Fx, REST and flow references stay readable and stable if titles are ever renamed."
+  },
+  "libraries": [
+    {
+      "name": "ExportLCDocuments",
+      "title": "ExportLCDocuments",
+      "description": "Master LC documents: original LC advice, amendments, bank instruments, presentation cover letters, payment advices.",
+      "enableVersioning": true,
+      "majorVersions": 100,
+      "enableMinorVersions": false,
+      "contentTypeName": "LC Document",
+      "folderStrategy": "One folder per LC keyed on InternalLCID (created on demand by the app/flow). Keeps any single folder well under the 5,000 view threshold.",
+      "fields": [
+        {
+          "name": "LCNumber",
+          "display": "LC Number",
+          "type": "Text",
+          "indexed": true,
+          "required": true,
+          "maxLength": 100
+        },
+        {
+          "name": "InternalLCID",
+          "display": "Internal LC ID",
+          "type": "Text",
+          "indexed": true,
+          "maxLength": 50
+        },
+        {
+          "name": "DocumentTypeCode",
+          "display": "Document Type",
+          "type": "Text",
+          "indexed": true,
+          "maxLength": 50
+        },
+        {
+          "name": "InvoiceNumber",
+          "display": "Invoice Number",
+          "type": "Text",
+          "indexed": true,
+          "maxLength": 100
+        },
+        {
+          "name": "ShipmentNumber",
+          "display": "Shipment Number",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "PresentationNumber",
+          "display": "Presentation Number",
+          "type": "Text",
+          "indexed": true,
+          "maxLength": 100
+        },
+        {
+          "name": "AmendmentNumber",
+          "display": "Amendment Number",
+          "type": "Text",
+          "maxLength": 50
+        },
+        {
+          "name": "DiscrepancyNumber",
+          "display": "Discrepancy Number",
+          "type": "Text",
+          "maxLength": 50
+        },
+        {
+          "name": "DocumentDate",
+          "display": "Document Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "DocVersionLabel",
+          "display": "Version",
+          "type": "Text",
+          "maxLength": 20
+        },
+        {
+          "name": "IsOriginal",
+          "display": "Original Received",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "CopiesCount",
+          "display": "Copies",
+          "type": "Number",
+          "decimals": 0
+        },
+        {
+          "name": "DocStatus",
+          "display": "Status",
+          "type": "Choice",
+          "choices": [
+            "Draft",
+            "Received",
+            "Under Review",
+            "Reviewed",
+            "Accepted",
+            "Rejected",
+            "Superseded"
+          ],
+          "default": "Received",
+          "indexed": true
+        },
+        {
+          "name": "ReviewedBy",
+          "display": "Reviewed By",
+          "type": "User"
+        },
+        {
+          "name": "ReviewedDate",
+          "display": "Reviewed Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "DocNotes",
+          "display": "Notes",
+          "type": "Note"
+        }
+      ],
+      "views": [
+        {
+          "name": "By LC",
+          "fields": [
+            "DocIcon",
+            "LinkFilename",
+            "LCNumber",
+            "DocumentTypeCode",
+            "DocStatus",
+            "DocumentDate",
+            "Modified",
+            "Editor"
+          ],
+          "query": "<OrderBy><FieldRef Name='LCNumber'/><FieldRef Name='DocumentTypeCode'/></OrderBy>",
+          "rowLimit": 100
+        }
+      ]
+    },
+    {
+      "name": "ExportLCInvoices",
+      "title": "ExportLCInvoices",
+      "description": "Commercial invoices, packing lists and invoice-level supporting documents.",
+      "enableVersioning": true,
+      "majorVersions": 100,
+      "contentTypeName": "LC Document",
+      "fields": [
+        {
+          "name": "LCNumber",
+          "display": "LC Number",
+          "type": "Text",
+          "indexed": true,
+          "required": true,
+          "maxLength": 100
+        },
+        {
+          "name": "InternalLCID",
+          "display": "Internal LC ID",
+          "type": "Text",
+          "indexed": true,
+          "maxLength": 50
+        },
+        {
+          "name": "InvoiceNumber",
+          "display": "Invoice Number",
+          "type": "Text",
+          "indexed": true,
+          "required": true,
+          "maxLength": 100
+        },
+        {
+          "name": "DocumentTypeCode",
+          "display": "Document Type",
+          "type": "Text",
+          "indexed": true,
+          "maxLength": 50
+        },
+        {
+          "name": "DocumentDate",
+          "display": "Document Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "DocStatus",
+          "display": "Status",
+          "type": "Choice",
+          "choices": [
+            "Draft",
+            "Received",
+            "Under Review",
+            "Reviewed",
+            "Accepted",
+            "Rejected",
+            "Superseded"
+          ],
+          "default": "Received",
+          "indexed": true
+        },
+        {
+          "name": "DocNotes",
+          "display": "Notes",
+          "type": "Note"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "ExportLCShippingDocuments",
+      "title": "ExportLCShippingDocuments",
+      "description": "Transport and shipment documents: B/L, AWB, certificates of origin, insurance, inspection, beneficiary certificates.",
+      "enableVersioning": true,
+      "majorVersions": 100,
+      "contentTypeName": "LC Document",
+      "fields": [
+        {
+          "name": "LCNumber",
+          "display": "LC Number",
+          "type": "Text",
+          "indexed": true,
+          "required": true,
+          "maxLength": 100
+        },
+        {
+          "name": "InternalLCID",
+          "display": "Internal LC ID",
+          "type": "Text",
+          "indexed": true,
+          "maxLength": 50
+        },
+        {
+          "name": "ShipmentNumber",
+          "display": "Shipment Number",
+          "type": "Text",
+          "indexed": true,
+          "maxLength": 100
+        },
+        {
+          "name": "InvoiceNumber",
+          "display": "Invoice Number",
+          "type": "Text",
+          "indexed": true,
+          "maxLength": 100
+        },
+        {
+          "name": "DocumentTypeCode",
+          "display": "Document Type",
+          "type": "Text",
+          "indexed": true,
+          "maxLength": 50
+        },
+        {
+          "name": "TransportDocNumber",
+          "display": "B/L or AWB Number",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "DocumentDate",
+          "display": "Document Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "DocStatus",
+          "display": "Status",
+          "type": "Choice",
+          "choices": [
+            "Draft",
+            "Received",
+            "Under Review",
+            "Reviewed",
+            "Accepted",
+            "Rejected",
+            "Superseded"
+          ],
+          "default": "Received",
+          "indexed": true
+        },
+        {
+          "name": "DocNotes",
+          "display": "Notes",
+          "type": "Note"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "ExportLCBankCorrespondence",
+      "title": "ExportLCBankCorrespondence",
+      "description": "Incoming and outgoing bank correspondence: SWIFT copies, discrepancy notices, waiver requests, acceptance advices, payment advices.",
+      "enableVersioning": true,
+      "majorVersions": 100,
+      "contentTypeName": "LC Document",
+      "fields": [
+        {
+          "name": "LCNumber",
+          "display": "LC Number",
+          "type": "Text",
+          "indexed": true,
+          "maxLength": 100
+        },
+        {
+          "name": "InternalLCID",
+          "display": "Internal LC ID",
+          "type": "Text",
+          "indexed": true,
+          "maxLength": 50
+        },
+        {
+          "name": "CorrespondenceRef",
+          "display": "Correspondence Reference",
+          "type": "Text",
+          "indexed": true,
+          "maxLength": 100
+        },
+        {
+          "name": "BankName",
+          "display": "Bank",
+          "type": "Text",
+          "indexed": true,
+          "maxLength": 200
+        },
+        {
+          "name": "Direction",
+          "display": "Direction",
+          "type": "Choice",
+          "choices": [
+            "Incoming",
+            "Outgoing"
+          ],
+          "indexed": true
+        },
+        {
+          "name": "DocumentTypeCode",
+          "display": "Document Type",
+          "type": "Text",
+          "maxLength": 50
+        },
+        {
+          "name": "DocumentDate",
+          "display": "Document Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "DocStatus",
+          "display": "Status",
+          "type": "Choice",
+          "choices": [
+            "Draft",
+            "Received",
+            "Under Review",
+            "Reviewed",
+            "Accepted",
+            "Rejected",
+            "Superseded"
+          ],
+          "default": "Received"
+        },
+        {
+          "name": "DocNotes",
+          "display": "Notes",
+          "type": "Note"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "ExportLCTemplates",
+      "title": "ExportLCTemplates",
+      "description": "Not in the original brief - added. Holds the Excel import template, presentation cover-letter templates and certificate templates so operational output is version-controlled instead of living on user desktops.",
+      "enableVersioning": true,
+      "majorVersions": 50,
+      "fields": [
+        {
+          "name": "TemplateCode",
+          "display": "Template Code",
+          "type": "Text",
+          "indexed": true,
+          "maxLength": 50
+        },
+        {
+          "name": "TemplatePurpose",
+          "display": "Purpose",
+          "type": "Text",
+          "maxLength": 255
+        },
+        {
+          "name": "IsActive",
+          "display": "Active",
+          "type": "Boolean",
+          "default": "1"
+        }
+      ],
+      "views": []
+    }
+  ],
+  "lists": [
+    {
+      "name": "ExportLCs",
+      "title": "01_ExportLCs",
+      "description": "Master register of Export Letters of Credit. One item per LC. The original LC terms are never overwritten by an amendment - amendments live in 02_LCAmendments and are applied forward into the current-value fields with a full before/after trail.",
+      "enableVersioning": true,
+      "majorVersions": 500,
+      "titleField": {
+        "display": "Internal LC ID",
+        "required": true,
+        "indexed": true,
+        "note": "Format LC-YYYY-NNNN, generated by the app from 18_WorkflowConfig key LCIDPattern."
+      },
+      "fields": [
+        {
+          "name": "LCNumber",
+          "display": "LC Number",
+          "type": "Text",
+          "maxLength": 100,
+          "required": true,
+          "indexed": true,
+          "note": "Issuing bank LC number, e.g. 26/BMLCU/40464, OLCT260054."
+        },
+        {
+          "name": "OurReference",
+          "display": "Our Reference",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true,
+          "note": "Advising bank / internal reference, e.g. 2026/ILC/3432."
+        },
+        {
+          "name": "LCYearSeq",
+          "display": "Year Sequence",
+          "type": "Number",
+          "decimals": 0,
+          "note": "Legacy '2026#' column from the Excel tracker, retained for reconciliation."
+        },
+        {
+          "name": "CustomerId",
+          "display": "Customer ID",
+          "type": "Number",
+          "decimals": 0,
+          "note": " Deliberately not indexed: SharePoint allows a maximum of 20 indexed columns per list and the 19 retained indexes cover every register, dashboard and report query."
+        },
+        {
+          "name": "CustomerCode",
+          "display": "Customer Code",
+          "type": "Text",
+          "maxLength": 50,
+          "note": " Deliberately not indexed: SharePoint allows a maximum of 20 indexed columns per list and the 19 retained indexes cover every register, dashboard and report query."
+        },
+        {
+          "name": "CustomerName",
+          "display": "Customer",
+          "type": "Text",
+          "maxLength": 255,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "CountryName",
+          "display": "Country",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "ApplicantName",
+          "display": "Applicant",
+          "type": "Text",
+          "maxLength": 255
+        },
+        {
+          "name": "BeneficiaryName",
+          "display": "Beneficiary",
+          "type": "Text",
+          "maxLength": 255
+        },
+        {
+          "name": "IssuingBankName",
+          "display": "Issuing Bank",
+          "type": "Text",
+          "maxLength": 200,
+          "indexed": true
+        },
+        {
+          "name": "IssuingBankId",
+          "display": "Issuing Bank ID",
+          "type": "Number",
+          "decimals": 0
+        },
+        {
+          "name": "AdvisingBankName",
+          "display": "Advising Bank",
+          "type": "Text",
+          "maxLength": 200,
+          "note": " Deliberately not indexed: SharePoint allows a maximum of 20 indexed columns per list and the 19 retained indexes cover every register, dashboard and report query."
+        },
+        {
+          "name": "AdvisingBankId",
+          "display": "Advising Bank ID",
+          "type": "Number",
+          "decimals": 0
+        },
+        {
+          "name": "ConfirmingBankName",
+          "display": "Confirming Bank",
+          "type": "Text",
+          "maxLength": 200
+        },
+        {
+          "name": "ReimbursingBankName",
+          "display": "Reimbursing Bank",
+          "type": "Text",
+          "maxLength": 200
+        },
+        {
+          "name": "ResponsibleOfficer",
+          "display": "Responsible Officer",
+          "type": "User",
+          "note": " Deliberately not indexed: SharePoint allows a maximum of 20 indexed columns per list and the 19 retained indexes cover every register, dashboard and report query."
+        },
+        {
+          "name": "ResponsibleOfficerEmail",
+          "display": "Responsible Officer Email",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true,
+          "note": "Denormalised for delegable filtering - SharePoint User columns are not delegable in Power Apps."
+        },
+        {
+          "name": "LCTypeCode",
+          "display": "LC Type",
+          "type": "Text",
+          "maxLength": 50,
+          "note": " Deliberately not indexed: SharePoint allows a maximum of 20 indexed columns per list and the 19 retained indexes cover every register, dashboard and report query."
+        },
+        {
+          "name": "IsIrrevocable",
+          "display": "Irrevocable",
+          "type": "Boolean",
+          "default": "1"
+        },
+        {
+          "name": "IsTransferable",
+          "display": "Transferable",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "IsRevolving",
+          "display": "Revolving",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "IsConfirmed",
+          "display": "Confirmed",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "AvailableWith",
+          "display": "Available With",
+          "type": "Text",
+          "maxLength": 255
+        },
+        {
+          "name": "AvailableBy",
+          "display": "Available By",
+          "type": "Choice",
+          "choices": [
+            "Sight Payment",
+            "Deferred Payment",
+            "Acceptance",
+            "Negotiation",
+            "Mixed Payment"
+          ],
+          "default": "Deferred Payment"
+        },
+        {
+          "name": "DraftsAt",
+          "display": "Drafts At",
+          "type": "Text",
+          "maxLength": 255
+        },
+        {
+          "name": "SightOrDeferred",
+          "display": "Sight / Deferred",
+          "type": "Choice",
+          "choices": [
+            "Sight",
+            "Deferred",
+            "Usance",
+            "Mixed"
+          ],
+          "default": "Deferred",
+          "note": " Deliberately not indexed: SharePoint allows a maximum of 20 indexed columns per list and the 19 retained indexes cover every register, dashboard and report query."
+        },
+        {
+          "name": "TenorDays",
+          "display": "Tenor (days)",
+          "type": "Number",
+          "decimals": 0
+        },
+        {
+          "name": "PaymentTermCode",
+          "display": "Payment Term",
+          "type": "Text",
+          "maxLength": 50,
+          "note": " Deliberately not indexed: SharePoint allows a maximum of 20 indexed columns per list and the 19 retained indexes cover every register, dashboard and report query."
+        },
+        {
+          "name": "PaymentTermText",
+          "display": "Payment Term Text",
+          "type": "Note",
+          "note": "e.g. '180 Days From TCN', '60 Calendar Days After Presentation Of Complied Documents'."
+        },
+        {
+          "name": "NegotiationTerms",
+          "display": "Negotiation Terms",
+          "type": "Note"
+        },
+        {
+          "name": "PartialShipments",
+          "display": "Partial Shipments",
+          "type": "Choice",
+          "choices": [
+            "Allowed",
+            "Not Allowed",
+            "Conditional"
+          ],
+          "default": "Allowed"
+        },
+        {
+          "name": "Transshipment",
+          "display": "Transshipment",
+          "type": "Choice",
+          "choices": [
+            "Allowed",
+            "Not Allowed",
+            "Conditional"
+          ],
+          "default": "Allowed"
+        },
+        {
+          "name": "PresentationPeriodDays",
+          "display": "Presentation Period (days)",
+          "type": "Number",
+          "decimals": 0,
+          "default": "21"
+        },
+        {
+          "name": "ReceivedDate",
+          "display": "Received Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "IssuanceDate",
+          "display": "Issuance Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "AdviceDate",
+          "display": "Advice Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "AcceptanceDate",
+          "display": "Acceptance Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "LatestShipmentDate",
+          "display": "Latest Shipment Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true,
+          "note": "The Excel tracker calls this 'Latest Date O/S'."
+        },
+        {
+          "name": "ExpiryDate",
+          "display": "Expiry Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "ExpiryPlace",
+          "display": "Place of Expiry",
+          "type": "Text",
+          "maxLength": 200
+        },
+        {
+          "name": "LastPresentationDate",
+          "display": "Last Presentation Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "SettlementDate",
+          "display": "Settlement Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "PurchaseOrder",
+          "display": "Purchase Order",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "SalesContract",
+          "display": "Sales Contract",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "ContractDate",
+          "display": "Contract Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "IncotermCode",
+          "display": "Incoterm",
+          "type": "Text",
+          "maxLength": 20
+        },
+        {
+          "name": "PortOfLoading",
+          "display": "Port of Loading",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "PortOfDischarge",
+          "display": "Port of Discharge",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "CountryOfOrigin",
+          "display": "Country of Origin",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "FinalDestination",
+          "display": "Final Destination",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "GoodsDescription",
+          "display": "Goods Description",
+          "type": "Note",
+          "richText": false
+        },
+        {
+          "name": "HSCode",
+          "display": "HS Code",
+          "type": "Text",
+          "maxLength": 50
+        },
+        {
+          "name": "CurrencyCode",
+          "display": "Currency",
+          "type": "Text",
+          "maxLength": 10,
+          "required": true,
+          "indexed": true,
+          "default": "USD"
+        },
+        {
+          "name": "LCAmount",
+          "display": "LC Amount",
+          "type": "Currency",
+          "decimals": 2,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "TolerancePlus",
+          "display": "Tolerance + (%)",
+          "type": "Number",
+          "decimals": 2,
+          "default": "0"
+        },
+        {
+          "name": "ToleranceMinus",
+          "display": "Tolerance - (%)",
+          "type": "Number",
+          "decimals": 2,
+          "default": "0"
+        },
+        {
+          "name": "MaximumAmount",
+          "display": "Maximum Amount",
+          "type": "Currency",
+          "decimals": 2,
+          "note": "LCAmount * (1 + TolerancePlus/100). Maintained by the app on save - stored rather than calculated so it stays delegable and indexable."
+        },
+        {
+          "name": "UtilizedAmount",
+          "display": "Utilized Amount",
+          "type": "Currency",
+          "decimals": 2,
+          "note": "Sum of invoice values presented under the LC. Maintained by flow FLOW-08 and by the app on invoice save."
+        },
+        {
+          "name": "OutstandingAmount",
+          "display": "Outstanding Amount",
+          "type": "Currency",
+          "decimals": 2,
+          "indexed": true,
+          "note": "MaximumAmount - UtilizedAmount. The Excel tracker calls this 'Remaining Balance / Exposure'."
+        },
+        {
+          "name": "AvailableAmount",
+          "display": "Available Amount",
+          "type": "Currency",
+          "decimals": 2
+        },
+        {
+          "name": "AmountPaidToDate",
+          "display": "Amount Paid To Date",
+          "type": "Currency",
+          "decimals": 2
+        },
+        {
+          "name": "AmountUSD",
+          "display": "LC Amount (USD)",
+          "type": "Currency",
+          "decimals": 2,
+          "note": "Reporting currency normalisation for exposure reports on mixed-currency portfolios."
+        },
+        {
+          "name": "FXRateToUSD",
+          "display": "FX Rate to USD",
+          "type": "Number",
+          "decimals": 6,
+          "default": "1"
+        },
+        {
+          "name": "LCStatus",
+          "display": "Status",
+          "type": "Choice",
+          "choices": [
+            "Draft",
+            "Received",
+            "Under Review",
+            "Active",
+            "Shipment Pending",
+            "Presented",
+            "Under Examination",
+            "Clean",
+            "Discrepancy",
+            "Accepted",
+            "Partially Drawn",
+            "Fully Drawn",
+            "Paid",
+            "Closed",
+            "Cancelled",
+            "Expired"
+          ],
+          "default": "Draft",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "LifecycleStage",
+          "display": "Lifecycle Stage",
+          "type": "Choice",
+          "choices": [
+            "Received",
+            "Reviewed",
+            "Active",
+            "Shipment",
+            "Presentation",
+            "Examination",
+            "Acceptance",
+            "Payment",
+            "Closed"
+          ],
+          "default": "Received",
+          "indexed": true,
+          "note": "Drives the workspace progress tracker. Derived from LCStatus via 16_StatusMaster."
+        },
+        {
+          "name": "RiskFlag",
+          "display": "Risk Flag",
+          "type": "Choice",
+          "choices": [
+            "None",
+            "Watch",
+            "High"
+          ],
+          "default": "None",
+          "indexed": true
+        },
+        {
+          "name": "IsClosed",
+          "display": "Closed",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true,
+          "note": "Denormalised open/closed switch. Every register and dashboard query filters on this first - it is the single highest-value index in the solution."
+        },
+        {
+          "name": "OpenDiscrepancyCount",
+          "display": "Open Discrepancies",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "MissingDocumentCount",
+          "display": "Missing Documents",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "RequiresAction",
+          "display": "Requires Action",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true,
+          "note": "Stored flag: true when the LC is in Received/Under Review/Discrepancy, or has open discrepancies or missing required documents. Maintained by the app on save and by FLOW-11. It exists because SharePoint cannot delegate an 'in' predicate over several statuses - one indexed boolean turns the Pending Action drill-through into a single server-side equality."
+        },
+        {
+          "name": "OpenTaskCount",
+          "display": "Open Tasks",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "InvoiceCount",
+          "display": "Invoice Count",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "AmendmentCount",
+          "display": "Amendment Count",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "LastActivityDate",
+          "display": "Last Activity",
+          "type": "DateTime",
+          "format": "DateTime",
+          "note": " Deliberately not indexed: SharePoint allows a maximum of 20 indexed columns per list and the 19 retained indexes cover every register, dashboard and report query."
+        },
+        {
+          "name": "LCNotes",
+          "display": "Notes",
+          "type": "Note"
+        },
+        {
+          "name": "SourceSystem",
+          "display": "Source",
+          "type": "Choice",
+          "choices": [
+            "Portal",
+            "Excel Import",
+            "Migration"
+          ],
+          "default": "Portal"
+        },
+        {
+          "name": "ImportBatchId",
+          "display": "Import Batch",
+          "type": "Text",
+          "maxLength": 50,
+          "indexed": true
+        }
+      ],
+      "views": [
+        {
+          "name": "Active LCs",
+          "fields": [
+            "Title",
+            "LCNumber",
+            "CustomerName",
+            "IssuingBankName",
+            "CurrencyCode",
+            "LCAmount",
+            "OutstandingAmount",
+            "LatestShipmentDate",
+            "ExpiryDate",
+            "LCStatus",
+            "ResponsibleOfficer",
+            "Modified"
+          ],
+          "query": "<Where><Eq><FieldRef Name='IsClosed'/><Value Type='Boolean'>0</Value></Eq></Where><OrderBy><FieldRef Name='ExpiryDate' Ascending='TRUE'/></OrderBy>",
+          "rowLimit": 100
+        },
+        {
+          "name": "Expiring Soon",
+          "fields": [
+            "Title",
+            "LCNumber",
+            "CustomerName",
+            "ExpiryDate",
+            "OutstandingAmount",
+            "LCStatus",
+            "ResponsibleOfficer"
+          ],
+          "query": "<Where><And><Eq><FieldRef Name='IsClosed'/><Value Type='Boolean'>0</Value></Eq><Leq><FieldRef Name='ExpiryDate'/><Value Type='DateTime'><Today OffsetDays='30'/></Value></Leq></And></Where><OrderBy><FieldRef Name='ExpiryDate' Ascending='TRUE'/></OrderBy>",
+          "rowLimit": 100
+        },
+        {
+          "name": "Shipment Deadline",
+          "fields": [
+            "Title",
+            "LCNumber",
+            "CustomerName",
+            "LatestShipmentDate",
+            "LCStatus",
+            "ResponsibleOfficer"
+          ],
+          "query": "<Where><And><Eq><FieldRef Name='IsClosed'/><Value Type='Boolean'>0</Value></Eq><Leq><FieldRef Name='LatestShipmentDate'/><Value Type='DateTime'><Today OffsetDays='14'/></Value></Leq></And></Where><OrderBy><FieldRef Name='LatestShipmentDate' Ascending='TRUE'/></OrderBy>",
+          "rowLimit": 100
+        }
+      ],
+      "indexBudgetNote": "20 of the 20 permitted indexed columns are used. Adding another index requires removing one - see docs/02-data-model.md."
+    },
+    {
+      "name": "LCAmendments",
+      "title": "02_LCAmendments",
+      "description": "Immutable amendment history. One item per amendment, with explicit before/after values on every changed term. The parent LC is never edited in place without an amendment record.",
+      "enableVersioning": true,
+      "majorVersions": 200,
+      "titleField": {
+        "display": "Amendment Reference",
+        "required": true,
+        "indexed": true,
+        "note": "Format {InternalLCID}-AMD-{NN}."
+      },
+      "fields": [
+        {
+          "name": "InternalLCID",
+          "display": "Internal LC ID",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "LCItemId",
+          "display": "LC Item ID",
+          "type": "Number",
+          "decimals": 0,
+          "indexed": true,
+          "required": true
+        },
+        {
+          "name": "LCNumber",
+          "display": "LC Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "AmendmentNumber",
+          "display": "Amendment Number",
+          "type": "Number",
+          "decimals": 0,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "AmendmentDate",
+          "display": "Amendment Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "BankAmendmentRef",
+          "display": "Bank Amendment Reference",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "AmendmentTypes",
+          "display": "Amendment Type",
+          "type": "MultiChoice",
+          "choices": [
+            "Amount Increase",
+            "Amount Decrease",
+            "Expiry Date",
+            "Latest Shipment Date",
+            "Beneficiary",
+            "Applicant",
+            "Currency",
+            "Payment Terms",
+            "Incoterms",
+            "Goods Description",
+            "Ports",
+            "Documents Required",
+            "Partial Shipment",
+            "Transshipment",
+            "Presentation Period",
+            "Other"
+          ],
+          "indexed": true
+        },
+        {
+          "name": "AmendmentDescription",
+          "display": "Description",
+          "type": "Note",
+          "required": true
+        },
+        {
+          "name": "ChangedField",
+          "display": "Changed Field",
+          "type": "Text",
+          "maxLength": 100,
+          "note": "Primary field changed. Multi-field amendments additionally write one row per field into 10_AuditLog."
+        },
+        {
+          "name": "PreviousValue",
+          "display": "Previous Value",
+          "type": "Note"
+        },
+        {
+          "name": "NewValue",
+          "display": "New Value",
+          "type": "Note"
+        },
+        {
+          "name": "AmountBefore",
+          "display": "Amount Before",
+          "type": "Currency",
+          "decimals": 2
+        },
+        {
+          "name": "AmountAfter",
+          "display": "Amount After",
+          "type": "Currency",
+          "decimals": 2
+        },
+        {
+          "name": "ExpiryBefore",
+          "display": "Expiry Before",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "ExpiryAfter",
+          "display": "Expiry After",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "ShipmentDateBefore",
+          "display": "Latest Shipment Before",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "ShipmentDateAfter",
+          "display": "Latest Shipment After",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "CustomerAcceptance",
+          "display": "Customer Acceptance",
+          "type": "Choice",
+          "choices": [
+            "Not Required",
+            "Pending",
+            "Accepted",
+            "Rejected"
+          ],
+          "default": "Pending",
+          "indexed": true
+        },
+        {
+          "name": "CustomerAcceptanceDate",
+          "display": "Customer Acceptance Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "BankConfirmation",
+          "display": "Bank Confirmation",
+          "type": "Choice",
+          "choices": [
+            "Not Required",
+            "Pending",
+            "Confirmed",
+            "Rejected"
+          ],
+          "default": "Pending",
+          "indexed": true
+        },
+        {
+          "name": "BankConfirmationDate",
+          "display": "Bank Confirmation Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "AmendmentStatus",
+          "display": "Status",
+          "type": "Choice",
+          "choices": [
+            "Draft",
+            "Received",
+            "Under Review",
+            "Pending Acceptance",
+            "Accepted",
+            "Rejected",
+            "Applied",
+            "Cancelled"
+          ],
+          "default": "Received",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "AppliedToLC",
+          "display": "Applied To LC",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true,
+          "note": "Set true only when the amendment's new values have been written forward onto 01_ExportLCs."
+        },
+        {
+          "name": "AppliedDate",
+          "display": "Applied Date",
+          "type": "DateTime",
+          "format": "DateTime"
+        },
+        {
+          "name": "AppliedBy",
+          "display": "Applied By",
+          "type": "User"
+        },
+        {
+          "name": "AmendmentCharges",
+          "display": "Amendment Charges",
+          "type": "Currency",
+          "decimals": 2
+        },
+        {
+          "name": "AmendmentNotes",
+          "display": "Notes",
+          "type": "Note"
+        }
+      ],
+      "views": [
+        {
+          "name": "Pending Amendments",
+          "fields": [
+            "Title",
+            "LCNumber",
+            "AmendmentNumber",
+            "AmendmentDate",
+            "AmendmentTypes",
+            "AmendmentStatus",
+            "CustomerAcceptance",
+            "BankConfirmation"
+          ],
+          "query": "<Where><Neq><FieldRef Name='AmendmentStatus'/><Value Type='Text'>Applied</Value></Neq></Where><OrderBy><FieldRef Name='AmendmentDate' Ascending='FALSE'/></OrderBy>",
+          "rowLimit": 100
+        }
+      ]
+    },
+    {
+      "name": "Invoices",
+      "title": "03_Invoices",
+      "description": "Commercial invoices drawn under an LC. Replaces the 12 repeating 7-column invoice blocks in the legacy Excel tracker with a proper one-to-many relationship.",
+      "enableVersioning": true,
+      "majorVersions": 200,
+      "titleField": {
+        "display": "Invoice Number",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "InternalLCID",
+          "display": "Internal LC ID",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "LCItemId",
+          "display": "LC Item ID",
+          "type": "Number",
+          "decimals": 0,
+          "indexed": true,
+          "required": true
+        },
+        {
+          "name": "LCNumber",
+          "display": "LC Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "OurReference",
+          "display": "Our Reference",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "CustomerName",
+          "display": "Customer",
+          "type": "Text",
+          "maxLength": 255,
+          "indexed": true
+        },
+        {
+          "name": "CustomerCode",
+          "display": "Customer Code",
+          "type": "Text",
+          "maxLength": 50
+        },
+        {
+          "name": "InvoiceDate",
+          "display": "Invoice Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "CurrencyCode",
+          "display": "Currency",
+          "type": "Text",
+          "maxLength": 10,
+          "default": "USD",
+          "indexed": true
+        },
+        {
+          "name": "InvoiceAmount",
+          "display": "Invoice Amount",
+          "type": "Currency",
+          "decimals": 2,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "PresentationDate",
+          "display": "Presentation Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "PresentationNumber",
+          "display": "Presentation Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "ShipmentNumber",
+          "display": "Shipment Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "CollectionDate",
+          "display": "Collection Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "DueDate",
+          "display": "Due Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "TrackingNumber",
+          "display": "Tracking Number",
+          "type": "Text",
+          "maxLength": 100,
+          "note": "Courier tracking for the document set sent to the bank."
+        },
+        {
+          "name": "PaidAmount",
+          "display": "Paid Amount",
+          "type": "Currency",
+          "decimals": 2,
+          "default": "0"
+        },
+        {
+          "name": "OutstandingAmount",
+          "display": "Outstanding Amount",
+          "type": "Currency",
+          "decimals": 2,
+          "indexed": true,
+          "note": "InvoiceAmount - PaidAmount, written by the app and by FLOW-08."
+        },
+        {
+          "name": "BankChargesAmount",
+          "display": "Bank Charges",
+          "type": "Currency",
+          "decimals": 2,
+          "default": "0"
+        },
+        {
+          "name": "InvoiceStatus",
+          "display": "Status",
+          "type": "Choice",
+          "choices": [
+            "Draft",
+            "Issued",
+            "Presented",
+            "Under Examination",
+            "Accepted",
+            "Discrepant",
+            "Negotiated",
+            "Collected",
+            "Paid",
+            "Partially Paid",
+            "Overdue",
+            "Cancelled"
+          ],
+          "default": "Draft",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "IsSettled",
+          "display": "Settled",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "GoodsDescription",
+          "display": "Goods Description",
+          "type": "Note"
+        },
+        {
+          "name": "InvoiceNotes",
+          "display": "Notes",
+          "type": "Note"
+        },
+        {
+          "name": "NextAction",
+          "display": "Next Action",
+          "type": "Text",
+          "maxLength": 255
+        },
+        {
+          "name": "SourceSystem",
+          "display": "Source",
+          "type": "Choice",
+          "choices": [
+            "Portal",
+            "Excel Import",
+            "Migration"
+          ],
+          "default": "Portal"
+        },
+        {
+          "name": "ImportBatchId",
+          "display": "Import Batch",
+          "type": "Text",
+          "maxLength": 50,
+          "indexed": true
+        }
+      ],
+      "views": [
+        {
+          "name": "Outstanding Invoices",
+          "fields": [
+            "Title",
+            "LCNumber",
+            "CustomerName",
+            "InvoiceDate",
+            "InvoiceAmount",
+            "OutstandingAmount",
+            "DueDate",
+            "InvoiceStatus"
+          ],
+          "query": "<Where><Eq><FieldRef Name='IsSettled'/><Value Type='Boolean'>0</Value></Eq></Where><OrderBy><FieldRef Name='DueDate' Ascending='TRUE'/></OrderBy>",
+          "rowLimit": 100
+        }
+      ]
+    },
+    {
+      "name": "Shipments",
+      "title": "04_Shipments",
+      "description": "Shipments made under an LC. An LC may carry several shipments where partial shipment is allowed.",
+      "enableVersioning": true,
+      "majorVersions": 100,
+      "titleField": {
+        "display": "Shipment Number",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "InternalLCID",
+          "display": "Internal LC ID",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "LCItemId",
+          "display": "LC Item ID",
+          "type": "Number",
+          "decimals": 0,
+          "indexed": true,
+          "required": true
+        },
+        {
+          "name": "LCNumber",
+          "display": "LC Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "InvoiceNumber",
+          "display": "Invoice Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "CustomerName",
+          "display": "Customer",
+          "type": "Text",
+          "maxLength": 255,
+          "indexed": true
+        },
+        {
+          "name": "PlannedShipmentDate",
+          "display": "Planned Shipment Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "LatestShipmentDate",
+          "display": "Latest Shipment Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "ActualShipmentDate",
+          "display": "Actual Shipment Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "TransportDocType",
+          "display": "Transport Document",
+          "type": "Choice",
+          "choices": [
+            "Bill of Lading",
+            "Air Waybill",
+            "Truck Consignment Note",
+            "Rail Consignment Note",
+            "Courier Receipt",
+            "Multimodal Transport Document"
+          ],
+          "default": "Bill of Lading"
+        },
+        {
+          "name": "TransportDocNumber",
+          "display": "B/L or AWB Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "TransportDocDate",
+          "display": "Transport Document Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "VesselOrFlight",
+          "display": "Vessel / Flight",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "CarrierName",
+          "display": "Carrier",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "PortOfLoading",
+          "display": "Port of Loading",
+          "type": "Text",
+          "maxLength": 150,
+          "indexed": true
+        },
+        {
+          "name": "PortOfDischarge",
+          "display": "Port of Discharge",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "FinalDestination",
+          "display": "Destination",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "IncotermCode",
+          "display": "Incoterm",
+          "type": "Text",
+          "maxLength": 20
+        },
+        {
+          "name": "CurrencyCode",
+          "display": "Currency",
+          "type": "Text",
+          "maxLength": 10,
+          "default": "USD"
+        },
+        {
+          "name": "ShipmentValue",
+          "display": "Shipment Value",
+          "type": "Currency",
+          "decimals": 2
+        },
+        {
+          "name": "GrossWeightKg",
+          "display": "Gross Weight (kg)",
+          "type": "Number",
+          "decimals": 3
+        },
+        {
+          "name": "NumberOfPackages",
+          "display": "Packages",
+          "type": "Number",
+          "decimals": 0
+        },
+        {
+          "name": "ShipmentStatus",
+          "display": "Status",
+          "type": "Choice",
+          "choices": [
+            "Planned",
+            "In Preparation",
+            "Ready",
+            "Shipped",
+            "In Transit",
+            "Delivered",
+            "Documents Presented",
+            "Overdue",
+            "Cancelled"
+          ],
+          "default": "Planned",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "IsShipped",
+          "display": "Shipped",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "ShipmentNotes",
+          "display": "Notes",
+          "type": "Note"
+        }
+      ],
+      "views": [
+        {
+          "name": "Deadline Watch",
+          "fields": [
+            "Title",
+            "LCNumber",
+            "CustomerName",
+            "LatestShipmentDate",
+            "ActualShipmentDate",
+            "ShipmentStatus"
+          ],
+          "query": "<Where><Eq><FieldRef Name='IsShipped'/><Value Type='Boolean'>0</Value></Eq></Where><OrderBy><FieldRef Name='LatestShipmentDate' Ascending='TRUE'/></OrderBy>",
+          "rowLimit": 100
+        }
+      ]
+    },
+    {
+      "name": "Presentations",
+      "title": "05_Presentations",
+      "description": "Document presentations made to the bank under an LC. The examination lifecycle lives here; individual findings live in 06_Discrepancies.",
+      "enableVersioning": true,
+      "majorVersions": 200,
+      "titleField": {
+        "display": "Presentation ID",
+        "required": true,
+        "indexed": true,
+        "note": "Format {InternalLCID}-PRES-{NN}."
+      },
+      "fields": [
+        {
+          "name": "InternalLCID",
+          "display": "Internal LC ID",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "LCItemId",
+          "display": "LC Item ID",
+          "type": "Number",
+          "decimals": 0,
+          "indexed": true,
+          "required": true
+        },
+        {
+          "name": "LCNumber",
+          "display": "LC Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "PresentationNumber",
+          "display": "Presentation Number",
+          "type": "Number",
+          "decimals": 0,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "CustomerName",
+          "display": "Customer",
+          "type": "Text",
+          "maxLength": 255,
+          "indexed": true
+        },
+        {
+          "name": "PresentingBank",
+          "display": "Presenting Bank",
+          "type": "Text",
+          "maxLength": 200,
+          "indexed": true
+        },
+        {
+          "name": "PresentationDate",
+          "display": "Presentation Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "PresentationDeadline",
+          "display": "Presentation Deadline",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true,
+          "note": "min(transport doc date + LC presentation period, LC expiry). Computed by the app on save."
+        },
+        {
+          "name": "CurrencyCode",
+          "display": "Currency",
+          "type": "Text",
+          "maxLength": 10,
+          "default": "USD"
+        },
+        {
+          "name": "AmountPresented",
+          "display": "Amount Presented",
+          "type": "Currency",
+          "decimals": 2,
+          "indexed": true
+        },
+        {
+          "name": "ShipmentNumber",
+          "display": "Shipment Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "InvoiceNumbers",
+          "display": "Invoices Included",
+          "type": "Note",
+          "note": "Semicolon-separated invoice numbers; the authoritative link is Invoices.PresentationNumber."
+        },
+        {
+          "name": "DocumentsCount",
+          "display": "Documents Count",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "CourierName",
+          "display": "Courier",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "CourierTrackingNumber",
+          "display": "Courier Tracking",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "DispatchDate",
+          "display": "Dispatch Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "BankReceiptDate",
+          "display": "Bank Receipt Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "ExaminationStatus",
+          "display": "Examination Status",
+          "type": "Choice",
+          "choices": [
+            "Not Started",
+            "Under Examination",
+            "Clean",
+            "Discrepant",
+            "Re-presented"
+          ],
+          "default": "Not Started",
+          "indexed": true
+        },
+        {
+          "name": "ExaminationDueDate",
+          "display": "Examination Due",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "note": "Bank receipt date + 5 banking days (UCP 600 art. 14b). Default configurable in 18_WorkflowConfig."
+        },
+        {
+          "name": "DiscrepancyStatus",
+          "display": "Discrepancy Status",
+          "type": "Choice",
+          "choices": [
+            "None",
+            "Open",
+            "Waiver Requested",
+            "Waived",
+            "Corrected",
+            "Rejected"
+          ],
+          "default": "None",
+          "indexed": true
+        },
+        {
+          "name": "OpenDiscrepancyCount",
+          "display": "Open Discrepancies",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "AcceptanceDate",
+          "display": "Acceptance Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "NegotiationDate",
+          "display": "Negotiation Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "MaturityDate",
+          "display": "Maturity Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "PaymentDate",
+          "display": "Payment Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "AmountAccepted",
+          "display": "Amount Accepted",
+          "type": "Currency",
+          "decimals": 2
+        },
+        {
+          "name": "ProceedsAmount",
+          "display": "Proceeds Amount",
+          "type": "Currency",
+          "decimals": 2
+        },
+        {
+          "name": "PresentationStatus",
+          "display": "Status",
+          "type": "Choice",
+          "choices": [
+            "Draft",
+            "Ready",
+            "Presented",
+            "Under Examination",
+            "Clean",
+            "Discrepancy",
+            "Accepted",
+            "Negotiated",
+            "Paid",
+            "Rejected",
+            "Closed"
+          ],
+          "default": "Draft",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "IsClosed",
+          "display": "Closed",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "PresentationNotes",
+          "display": "Notes",
+          "type": "Note"
+        }
+      ],
+      "views": [
+        {
+          "name": "Open Presentations",
+          "fields": [
+            "Title",
+            "LCNumber",
+            "CustomerName",
+            "PresentationDate",
+            "AmountPresented",
+            "ExaminationStatus",
+            "PresentationStatus",
+            "MaturityDate"
+          ],
+          "query": "<Where><Eq><FieldRef Name='IsClosed'/><Value Type='Boolean'>0</Value></Eq></Where><OrderBy><FieldRef Name='PresentationDate' Ascending='FALSE'/></OrderBy>",
+          "rowLimit": 100
+        }
+      ]
+    },
+    {
+      "name": "Discrepancies",
+      "title": "06_Discrepancies",
+      "description": "Individual discrepancies raised by the examining bank against a presentation. Categories are configurable in 24_DiscrepancyCategories - none are hard-coded in the app.",
+      "enableVersioning": true,
+      "majorVersions": 100,
+      "titleField": {
+        "display": "Discrepancy Number",
+        "required": true,
+        "indexed": true,
+        "note": "Format {PresentationID}-D{NN}."
+      },
+      "fields": [
+        {
+          "name": "InternalLCID",
+          "display": "Internal LC ID",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "LCItemId",
+          "display": "LC Item ID",
+          "type": "Number",
+          "decimals": 0,
+          "indexed": true,
+          "required": true
+        },
+        {
+          "name": "LCNumber",
+          "display": "LC Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "PresentationId",
+          "display": "Presentation Item ID",
+          "type": "Number",
+          "decimals": 0,
+          "indexed": true
+        },
+        {
+          "name": "PresentationRef",
+          "display": "Presentation",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "CustomerName",
+          "display": "Customer",
+          "type": "Text",
+          "maxLength": 255,
+          "indexed": true
+        },
+        {
+          "name": "CategoryCode",
+          "display": "Category",
+          "type": "Text",
+          "maxLength": 50,
+          "indexed": true
+        },
+        {
+          "name": "CategoryName",
+          "display": "Category Name",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "Severity",
+          "display": "Severity",
+          "type": "Choice",
+          "choices": [
+            "Minor",
+            "Major",
+            "Critical"
+          ],
+          "default": "Major",
+          "indexed": true
+        },
+        {
+          "name": "DiscrepancyDescription",
+          "display": "Description",
+          "type": "Note",
+          "required": true
+        },
+        {
+          "name": "RelatedDocumentType",
+          "display": "Related Document",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "RelatedDocumentUrl",
+          "display": "Document Link",
+          "type": "URL"
+        },
+        {
+          "name": "DetectedDate",
+          "display": "Detected Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "DetectedBy",
+          "display": "Detected By",
+          "type": "Choice",
+          "choices": [
+            "Issuing Bank",
+            "Advising Bank",
+            "Confirming Bank",
+            "Internal Review",
+            "Customer"
+          ],
+          "default": "Issuing Bank"
+        },
+        {
+          "name": "BankNoticeRef",
+          "display": "Bank Notice Reference",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "BankNoticeDate",
+          "display": "Bank Notice Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "CustomerActionRequired",
+          "display": "Customer Action",
+          "type": "Note"
+        },
+        {
+          "name": "BankActionRequired",
+          "display": "Bank Action",
+          "type": "Note"
+        },
+        {
+          "name": "WaiverRequired",
+          "display": "Waiver Required",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "WaiverRequestedDate",
+          "display": "Waiver Requested",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "WaiverReceived",
+          "display": "Waiver Received",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "WaiverReceivedDate",
+          "display": "Waiver Received Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "ResolutionType",
+          "display": "Resolution",
+          "type": "Choice",
+          "choices": [
+            "Not Resolved",
+            "Waived by Applicant",
+            "Documents Corrected",
+            "Re-presented",
+            "Sent on Approval Basis",
+            "Sent on Collection Basis",
+            "Withdrawn",
+            "Rejected - Unresolved"
+          ],
+          "default": "Not Resolved",
+          "indexed": true
+        },
+        {
+          "name": "ResolutionNotes",
+          "display": "Resolution Notes",
+          "type": "Note"
+        },
+        {
+          "name": "ResolutionDate",
+          "display": "Resolution Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "AssignedTo",
+          "display": "Assigned To",
+          "type": "User"
+        },
+        {
+          "name": "AssignedToEmail",
+          "display": "Assigned To Email",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "DueDate",
+          "display": "Due Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "EscalationLevel",
+          "display": "Escalation Level",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "LastEscalatedDate",
+          "display": "Last Escalated",
+          "type": "DateTime",
+          "format": "DateTime"
+        },
+        {
+          "name": "DiscrepancyStatus",
+          "display": "Status",
+          "type": "Choice",
+          "choices": [
+            "Open",
+            "Under Review",
+            "Waiver Requested",
+            "Waived",
+            "Corrected",
+            "Resolved",
+            "Rejected",
+            "Closed"
+          ],
+          "default": "Open",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "IsOpen",
+          "display": "Open",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        }
+      ],
+      "views": [
+        {
+          "name": "Open Discrepancies",
+          "fields": [
+            "Title",
+            "LCNumber",
+            "CustomerName",
+            "CategoryName",
+            "Severity",
+            "DetectedDate",
+            "DueDate",
+            "DiscrepancyStatus",
+            "AssignedTo"
+          ],
+          "query": "<Where><Eq><FieldRef Name='IsOpen'/><Value Type='Boolean'>1</Value></Eq></Where><OrderBy><FieldRef Name='DetectedDate' Ascending='TRUE'/></OrderBy>",
+          "rowLimit": 100
+        }
+      ]
+    },
+    {
+      "name": "Proceeds",
+      "title": "07_Proceeds",
+      "description": "Settlement and proceeds received against presentations. Outstanding proceeds = accepted - paid; net proceeds = gross - all charges. Both are stored, not calculated columns, so they stay delegable and indexable.",
+      "enableVersioning": true,
+      "majorVersions": 200,
+      "titleField": {
+        "display": "Proceeds Reference",
+        "required": true,
+        "indexed": true,
+        "note": "Format {InternalLCID}-PR-{NN}."
+      },
+      "fields": [
+        {
+          "name": "InternalLCID",
+          "display": "Internal LC ID",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "LCItemId",
+          "display": "LC Item ID",
+          "type": "Number",
+          "decimals": 0,
+          "indexed": true,
+          "required": true
+        },
+        {
+          "name": "LCNumber",
+          "display": "LC Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "PresentationId",
+          "display": "Presentation Item ID",
+          "type": "Number",
+          "decimals": 0,
+          "indexed": true
+        },
+        {
+          "name": "PresentationRef",
+          "display": "Presentation",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "InvoiceNumber",
+          "display": "Invoice Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "CustomerName",
+          "display": "Customer",
+          "type": "Text",
+          "maxLength": 255,
+          "indexed": true
+        },
+        {
+          "name": "PayingBank",
+          "display": "Paying / Reimbursing Bank",
+          "type": "Text",
+          "maxLength": 200,
+          "indexed": true
+        },
+        {
+          "name": "CurrencyCode",
+          "display": "Currency",
+          "type": "Text",
+          "maxLength": 10,
+          "default": "USD",
+          "indexed": true
+        },
+        {
+          "name": "AmountPresented",
+          "display": "Amount Presented",
+          "type": "Currency",
+          "decimals": 2
+        },
+        {
+          "name": "AmountAccepted",
+          "display": "Amount Accepted",
+          "type": "Currency",
+          "decimals": 2,
+          "indexed": true
+        },
+        {
+          "name": "AmountPaid",
+          "display": "Amount Paid",
+          "type": "Currency",
+          "decimals": 2,
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "BankCharges",
+          "display": "Bank Charges",
+          "type": "Currency",
+          "decimals": 2,
+          "default": "0"
+        },
+        {
+          "name": "CorrespondentCharges",
+          "display": "Correspondent Charges",
+          "type": "Currency",
+          "decimals": 2,
+          "default": "0"
+        },
+        {
+          "name": "DiscountCharges",
+          "display": "Discount / Interest Charges",
+          "type": "Currency",
+          "decimals": 2,
+          "default": "0"
+        },
+        {
+          "name": "OtherCharges",
+          "display": "Other Charges",
+          "type": "Currency",
+          "decimals": 2,
+          "default": "0"
+        },
+        {
+          "name": "ChargesBorneBy",
+          "display": "Charges Borne By",
+          "type": "Choice",
+          "choices": [
+            "Beneficiary",
+            "Applicant",
+            "Shared"
+          ],
+          "default": "Applicant"
+        },
+        {
+          "name": "GrossProceeds",
+          "display": "Gross Proceeds",
+          "type": "Currency",
+          "decimals": 2
+        },
+        {
+          "name": "NetProceeds",
+          "display": "Net Proceeds",
+          "type": "Currency",
+          "decimals": 2,
+          "note": "GrossProceeds - (BankCharges + CorrespondentCharges + DiscountCharges + OtherCharges)."
+        },
+        {
+          "name": "OutstandingProceeds",
+          "display": "Outstanding Proceeds",
+          "type": "Currency",
+          "decimals": 2,
+          "indexed": true,
+          "note": "AmountAccepted - AmountPaid."
+        },
+        {
+          "name": "ValueDate",
+          "display": "Value Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "MaturityDate",
+          "display": "Maturity Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "PaymentDate",
+          "display": "Payment Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "BankReference",
+          "display": "Bank Reference",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "CreditedAccount",
+          "display": "Credited Account",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "ProceedsStatus",
+          "display": "Status",
+          "type": "Choice",
+          "choices": [
+            "Expected",
+            "Accepted",
+            "Awaiting Maturity",
+            "Partially Received",
+            "Received",
+            "Overdue",
+            "Written Off",
+            "Closed"
+          ],
+          "default": "Expected",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "IsSettled",
+          "display": "Settled",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "ProceedsNotes",
+          "display": "Notes",
+          "type": "Note"
+        }
+      ],
+      "views": [
+        {
+          "name": "Outstanding Proceeds",
+          "fields": [
+            "Title",
+            "LCNumber",
+            "CustomerName",
+            "CurrencyCode",
+            "AmountAccepted",
+            "AmountPaid",
+            "OutstandingProceeds",
+            "MaturityDate",
+            "ProceedsStatus"
+          ],
+          "query": "<Where><Eq><FieldRef Name='IsSettled'/><Value Type='Boolean'>0</Value></Eq></Where><OrderBy><FieldRef Name='MaturityDate' Ascending='TRUE'/></OrderBy>",
+          "rowLimit": 100
+        }
+      ]
+    },
+    {
+      "name": "Correspondence",
+      "title": "08_Correspondence",
+      "description": "Bank correspondence log. Every item can be linked to an LC and optionally to an amendment, presentation, discrepancy or proceeds record.",
+      "enableVersioning": true,
+      "majorVersions": 100,
+      "titleField": {
+        "display": "Subject",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "InternalLCID",
+          "display": "Internal LC ID",
+          "type": "Text",
+          "maxLength": 50,
+          "indexed": true
+        },
+        {
+          "name": "LCItemId",
+          "display": "LC Item ID",
+          "type": "Number",
+          "decimals": 0,
+          "indexed": true
+        },
+        {
+          "name": "LCNumber",
+          "display": "LC Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "Direction",
+          "display": "Direction",
+          "type": "Choice",
+          "choices": [
+            "Incoming",
+            "Outgoing"
+          ],
+          "default": "Incoming",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "CorrespondenceDate",
+          "display": "Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "BankName",
+          "display": "Bank",
+          "type": "Text",
+          "maxLength": 200,
+          "indexed": true
+        },
+        {
+          "name": "ContactPerson",
+          "display": "Contact",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "ReferenceNumber",
+          "display": "Reference",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "CorrespondenceType",
+          "display": "Type",
+          "type": "Choice",
+          "choices": [
+            "LC Advice",
+            "Amendment Advice",
+            "SWIFT MT700",
+            "SWIFT MT707",
+            "SWIFT MT730",
+            "SWIFT MT750",
+            "SWIFT MT752",
+            "SWIFT MT754",
+            "SWIFT MT799",
+            "Discrepancy Notice",
+            "Waiver Request",
+            "Acceptance Advice",
+            "Payment Advice",
+            "Charges Advice",
+            "Document Submission",
+            "Query",
+            "Reminder",
+            "Other"
+          ],
+          "default": "Other",
+          "indexed": true
+        },
+        {
+          "name": "CorrespondenceDescription",
+          "display": "Description",
+          "type": "Note"
+        },
+        {
+          "name": "LinkedEntity",
+          "display": "Linked To",
+          "type": "Choice",
+          "choices": [
+            "LC",
+            "Amendment",
+            "Invoice",
+            "Shipment",
+            "Presentation",
+            "Discrepancy",
+            "Proceeds"
+          ],
+          "default": "LC",
+          "indexed": true
+        },
+        {
+          "name": "LinkedEntityId",
+          "display": "Linked Item ID",
+          "type": "Number",
+          "decimals": 0,
+          "indexed": true
+        },
+        {
+          "name": "LinkedEntityRef",
+          "display": "Linked Reference",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "ActionRequired",
+          "display": "Action Required",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "ActionDescription",
+          "display": "Action Description",
+          "type": "Note"
+        },
+        {
+          "name": "ResponsibleUser",
+          "display": "Responsible User",
+          "type": "User"
+        },
+        {
+          "name": "ResponsibleUserEmail",
+          "display": "Responsible Email",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "DueDate",
+          "display": "Due Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "RespondedDate",
+          "display": "Responded Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "AttachmentUrl",
+          "display": "Attachment Link",
+          "type": "URL",
+          "note": "Points into ExportLCBankCorrespondence. Native list attachments are also enabled for quick drops."
+        },
+        {
+          "name": "CorrespondenceStatus",
+          "display": "Status",
+          "type": "Choice",
+          "choices": [
+            "New",
+            "In Progress",
+            "Awaiting Bank",
+            "Awaiting Customer",
+            "Responded",
+            "Closed"
+          ],
+          "default": "New",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "IsOpen",
+          "display": "Open",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        }
+      ],
+      "views": [
+        {
+          "name": "Action Required",
+          "fields": [
+            "Title",
+            "LCNumber",
+            "BankName",
+            "Direction",
+            "CorrespondenceDate",
+            "DueDate",
+            "CorrespondenceStatus",
+            "ResponsibleUser"
+          ],
+          "query": "<Where><And><Eq><FieldRef Name='ActionRequired'/><Value Type='Boolean'>1</Value></Eq><Eq><FieldRef Name='IsOpen'/><Value Type='Boolean'>1</Value></Eq></And></Where><OrderBy><FieldRef Name='DueDate' Ascending='TRUE'/></OrderBy>",
+          "rowLimit": 100
+        }
+      ]
+    },
+    {
+      "name": "LCTasks",
+      "title": "09_Tasks",
+      "description": "Operational task centre. Tasks are either created by users or generated by flows (deadline, missing document, discrepancy escalation) and are polymorphically linked to any portal record.",
+      "enableVersioning": true,
+      "majorVersions": 100,
+      "titleField": {
+        "display": "Task",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "InternalLCID",
+          "display": "Internal LC ID",
+          "type": "Text",
+          "maxLength": 50,
+          "indexed": true
+        },
+        {
+          "name": "LCItemId",
+          "display": "LC Item ID",
+          "type": "Number",
+          "decimals": 0,
+          "indexed": true
+        },
+        {
+          "name": "LCNumber",
+          "display": "LC Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "CustomerName",
+          "display": "Customer",
+          "type": "Text",
+          "maxLength": 255,
+          "indexed": true
+        },
+        {
+          "name": "RelatedEntity",
+          "display": "Related To",
+          "type": "Choice",
+          "choices": [
+            "LC",
+            "Amendment",
+            "Invoice",
+            "Shipment",
+            "Presentation",
+            "Discrepancy",
+            "Proceeds",
+            "Correspondence",
+            "Document"
+          ],
+          "default": "LC",
+          "indexed": true
+        },
+        {
+          "name": "RelatedEntityId",
+          "display": "Related Item ID",
+          "type": "Number",
+          "decimals": 0,
+          "indexed": true
+        },
+        {
+          "name": "RelatedEntityRef",
+          "display": "Related Reference",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "TaskDescription",
+          "display": "Description",
+          "type": "Note"
+        },
+        {
+          "name": "TaskCategory",
+          "display": "Category",
+          "type": "Choice",
+          "choices": [
+            "Document Collection",
+            "Document Review",
+            "Presentation",
+            "Bank Follow-up",
+            "Customer Follow-up",
+            "Amendment",
+            "Discrepancy Resolution",
+            "Collection",
+            "Approval",
+            "Data Correction",
+            "Other"
+          ],
+          "default": "Other",
+          "indexed": true
+        },
+        {
+          "name": "AssignedTo",
+          "display": "Assigned To",
+          "type": "User",
+          "indexed": true
+        },
+        {
+          "name": "AssignedToEmail",
+          "display": "Assigned To Email",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "Priority",
+          "display": "Priority",
+          "type": "Choice",
+          "choices": [
+            "Low",
+            "Normal",
+            "High",
+            "Critical"
+          ],
+          "default": "Normal",
+          "indexed": true
+        },
+        {
+          "name": "DueDate",
+          "display": "Due Date",
+          "type": "DateTime",
+          "format": "DateOnly",
+          "indexed": true
+        },
+        {
+          "name": "StartDate",
+          "display": "Start Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "CompletedDate",
+          "display": "Completed Date",
+          "type": "DateTime",
+          "format": "DateTime"
+        },
+        {
+          "name": "CompletedBy",
+          "display": "Completed By",
+          "type": "User"
+        },
+        {
+          "name": "TaskStatus",
+          "display": "Status",
+          "type": "Choice",
+          "choices": [
+            "Not Started",
+            "In Progress",
+            "Waiting",
+            "Completed",
+            "Cancelled"
+          ],
+          "default": "Not Started",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "IsOpen",
+          "display": "Open",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        },
+        {
+          "name": "IsSystemGenerated",
+          "display": "System Generated",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "GeneratedByRule",
+          "display": "Generated By Rule",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true,
+          "note": "WorkflowConfig rule key, so a rule change can find and retire its own open tasks instead of duplicating them."
+        },
+        {
+          "name": "ReminderSentCount",
+          "display": "Reminders Sent",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "LastReminderDate",
+          "display": "Last Reminder",
+          "type": "DateTime",
+          "format": "DateTime"
+        },
+        {
+          "name": "TaskNotes",
+          "display": "Notes",
+          "type": "Note"
+        }
+      ],
+      "views": [
+        {
+          "name": "My Open Tasks",
+          "fields": [
+            "Title",
+            "LCNumber",
+            "CustomerName",
+            "Priority",
+            "DueDate",
+            "TaskStatus",
+            "AssignedTo"
+          ],
+          "query": "<Where><And><Eq><FieldRef Name='IsOpen'/><Value Type='Boolean'>1</Value></Eq><Eq><FieldRef Name='AssignedTo'/><Value Type='Integer'><UserID Type='Integer'/></Value></Eq></And></Where><OrderBy><FieldRef Name='DueDate' Ascending='TRUE'/></OrderBy>",
+          "rowLimit": 100
+        },
+        {
+          "name": "Overdue",
+          "fields": [
+            "Title",
+            "LCNumber",
+            "Priority",
+            "DueDate",
+            "AssignedTo",
+            "TaskStatus"
+          ],
+          "query": "<Where><And><Eq><FieldRef Name='IsOpen'/><Value Type='Boolean'>1</Value></Eq><Lt><FieldRef Name='DueDate'/><Value Type='DateTime'><Today/></Value></Lt></And></Where><OrderBy><FieldRef Name='DueDate' Ascending='TRUE'/></OrderBy>",
+          "rowLimit": 100
+        }
+      ]
+    },
+    {
+      "name": "AuditLog",
+      "title": "10_AuditLog",
+      "description": "Append-only audit trail. Written by the app on every save and by flows on every automated change. Users get Contribute-without-edit-or-delete via a broken-inheritance permission set - see sharepoint/scripts/Set-Permissions.ps1.",
+      "enableVersioning": false,
+      "titleField": {
+        "display": "Audit Entry",
+        "required": true,
+        "indexed": false,
+        "note": "Format {Entity}:{RecordRef}:{Field}."
+      },
+      "fields": [
+        {
+          "name": "EntityName",
+          "display": "Entity",
+          "type": "Choice",
+          "choices": [
+            "ExportLC",
+            "Amendment",
+            "Invoice",
+            "Shipment",
+            "Presentation",
+            "Discrepancy",
+            "Proceeds",
+            "Correspondence",
+            "Task",
+            "Document",
+            "Checklist",
+            "MasterData",
+            "Configuration",
+            "Security"
+          ],
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "RecordItemId",
+          "display": "Record Item ID",
+          "type": "Number",
+          "decimals": 0,
+          "indexed": true
+        },
+        {
+          "name": "RecordReference",
+          "display": "Record Reference",
+          "type": "Text",
+          "maxLength": 150,
+          "indexed": true
+        },
+        {
+          "name": "InternalLCID",
+          "display": "Internal LC ID",
+          "type": "Text",
+          "maxLength": 50,
+          "indexed": true,
+          "note": "Denormalised so the workspace Audit tab is a single indexed query."
+        },
+        {
+          "name": "LCNumber",
+          "display": "LC Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "ActionType",
+          "display": "Action",
+          "type": "Choice",
+          "choices": [
+            "Create",
+            "Update",
+            "Delete",
+            "Status Change",
+            "Amount Change",
+            "Date Change",
+            "Amendment Applied",
+            "Approval Decision",
+            "Document Upload",
+            "Document Change",
+            "Document Delete",
+            "Import",
+            "Login",
+            "Export",
+            "Permission Change"
+          ],
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "FieldName",
+          "display": "Field",
+          "type": "Text",
+          "maxLength": 150,
+          "indexed": true
+        },
+        {
+          "name": "OldValue",
+          "display": "Old Value",
+          "type": "Note"
+        },
+        {
+          "name": "NewValue",
+          "display": "New Value",
+          "type": "Note"
+        },
+        {
+          "name": "IsCriticalField",
+          "display": "Critical Field",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true,
+          "note": "Critical field list is configurable in 18_WorkflowConfig key CriticalAuditFields."
+        },
+        {
+          "name": "ActionByEmail",
+          "display": "Performed By",
+          "type": "Text",
+          "maxLength": 100,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "ActionByName",
+          "display": "Performed By Name",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "ActionTimestamp",
+          "display": "Timestamp",
+          "type": "DateTime",
+          "format": "DateTime",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "ActionSource",
+          "display": "Source",
+          "type": "Choice",
+          "choices": [
+            "Power App",
+            "Power Automate",
+            "Excel Import",
+            "Migration",
+            "Admin Script"
+          ],
+          "default": "Power App",
+          "indexed": true
+        },
+        {
+          "name": "ActionComment",
+          "display": "Comment",
+          "type": "Note"
+        },
+        {
+          "name": "CorrelationId",
+          "display": "Correlation ID",
+          "type": "Text",
+          "maxLength": 60,
+          "indexed": true,
+          "note": "One GUID per user save, so a multi-field change reads as a single transaction."
+        },
+        {
+          "name": "PartitionKey",
+          "display": "Partition",
+          "type": "Text",
+          "maxLength": 10,
+          "indexed": true,
+          "note": "YYYY-MM. Every audit query filters on PartitionKey first, keeping result sets far below the 5,000 item list view threshold as history grows."
+        }
+      ],
+      "views": [
+        {
+          "name": "Recent Critical Changes",
+          "fields": [
+            "ActionTimestamp",
+            "EntityName",
+            "RecordReference",
+            "ActionType",
+            "FieldName",
+            "OldValue",
+            "NewValue",
+            "ActionByName"
+          ],
+          "query": "<Where><Eq><FieldRef Name='IsCriticalField'/><Value Type='Boolean'>1</Value></Eq></Where><OrderBy><FieldRef Name='ActionTimestamp' Ascending='FALSE'/></OrderBy>",
+          "rowLimit": 200
+        }
+      ]
+    },
+    {
+      "name": "Customers",
+      "title": "11_Customers",
+      "description": "Customer master. Seeded from the 130-row Cust Data sheet in the legacy workbooks, de-duplicated and name-normalised.",
+      "enableVersioning": true,
+      "majorVersions": 50,
+      "titleField": {
+        "display": "Customer Name",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "CustomerCode",
+          "display": "Customer Code",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "CustomerNameNormalized",
+          "display": "Normalized Name",
+          "type": "Text",
+          "maxLength": 255,
+          "indexed": true,
+          "note": "Upper-cased, punctuation-stripped. Used by the importer for fuzzy duplicate detection (e.g. 'Kare' vs 'Kare Pharmaceutical Plc' in the legacy Summary sheet)."
+        },
+        {
+          "name": "CountryName",
+          "display": "Country",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "CountryCode",
+          "display": "Country Code",
+          "type": "Text",
+          "maxLength": 5
+        },
+        {
+          "name": "CustomerType",
+          "display": "Type",
+          "type": "Choice",
+          "choices": [
+            "Distributor",
+            "Wholesaler",
+            "Government",
+            "Hospital Group",
+            "Agent",
+            "Other"
+          ],
+          "default": "Distributor"
+        },
+        {
+          "name": "ContactName",
+          "display": "Contact",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "ContactEmail",
+          "display": "Contact Email",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "ContactPhone",
+          "display": "Contact Phone",
+          "type": "Text",
+          "maxLength": 50
+        },
+        {
+          "name": "CreditLimit",
+          "display": "Credit Limit",
+          "type": "Currency",
+          "decimals": 2
+        },
+        {
+          "name": "ExposureLimit",
+          "display": "LC Exposure Limit",
+          "type": "Currency",
+          "decimals": 2,
+          "note": "Drives the Customer Exposure report's limit-utilisation column."
+        },
+        {
+          "name": "DefaultPaymentTermCode",
+          "display": "Default Payment Term",
+          "type": "Text",
+          "maxLength": 50
+        },
+        {
+          "name": "DefaultIncoterm",
+          "display": "Default Incoterm",
+          "type": "Text",
+          "maxLength": 20
+        },
+        {
+          "name": "IsActive",
+          "display": "Active",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        },
+        {
+          "name": "SortOrder",
+          "display": "Sort Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "100"
+        },
+        {
+          "name": "CustomerNotes",
+          "display": "Notes",
+          "type": "Note"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "Banks",
+      "title": "12_Banks",
+      "description": "Bank master. Seeded from the legacy Banks Data sheet, which held four disconnected columns (SA Banks, Global Banks, 'our', 'there'). Modelled here as one list with role flags.",
+      "enableVersioning": true,
+      "majorVersions": 50,
+      "titleField": {
+        "display": "Bank Name",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "BankCode",
+          "display": "Bank Code",
+          "type": "Text",
+          "maxLength": 50,
+          "indexed": true
+        },
+        {
+          "name": "SwiftBIC",
+          "display": "SWIFT / BIC",
+          "type": "Text",
+          "maxLength": 20,
+          "indexed": true
+        },
+        {
+          "name": "BankGroup",
+          "display": "Bank Group",
+          "type": "Choice",
+          "choices": [
+            "Domestic",
+            "Global",
+            "Correspondent"
+          ],
+          "default": "Domestic",
+          "indexed": true,
+          "note": "Legacy 'SA Banks' maps to Domestic, 'Global Banks' to Global."
+        },
+        {
+          "name": "CanAdvise",
+          "display": "Acts as Advising Bank",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "CanIssue",
+          "display": "Acts as Issuing Bank",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "CanConfirm",
+          "display": "Acts as Confirming Bank",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "CanReimburse",
+          "display": "Acts as Reimbursing Bank",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "CountryName",
+          "display": "Country",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "BranchName",
+          "display": "Branch",
+          "type": "Text",
+          "maxLength": 200
+        },
+        {
+          "name": "BankAddress",
+          "display": "Address",
+          "type": "Note"
+        },
+        {
+          "name": "TradeDeskEmail",
+          "display": "Trade Desk Email",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "TradeDeskPhone",
+          "display": "Trade Desk Phone",
+          "type": "Text",
+          "maxLength": 50
+        },
+        {
+          "name": "RelationshipManager",
+          "display": "Relationship Manager",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "StandardExamDays",
+          "display": "Standard Examination Days",
+          "type": "Number",
+          "decimals": 0,
+          "default": "5"
+        },
+        {
+          "name": "IsActive",
+          "display": "Active",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        },
+        {
+          "name": "SortOrder",
+          "display": "Sort Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "100"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "Countries",
+      "title": "13_Countries",
+      "description": "Country master with trade-risk attributes used by the exposure-by-country report.",
+      "enableVersioning": true,
+      "majorVersions": 50,
+      "titleField": {
+        "display": "Country Name",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "CountryCode",
+          "display": "ISO Code",
+          "type": "Text",
+          "maxLength": 5,
+          "indexed": true
+        },
+        {
+          "name": "Region",
+          "display": "Region",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "RiskRating",
+          "display": "Risk Rating",
+          "type": "Choice",
+          "choices": [
+            "Low",
+            "Medium",
+            "High",
+            "Restricted"
+          ],
+          "default": "Medium",
+          "indexed": true
+        },
+        {
+          "name": "RequiresConfirmation",
+          "display": "LC Confirmation Recommended",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "IsSanctioned",
+          "display": "Sanctions Watch",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true,
+          "note": "Advisory flag only. It raises a warning banner on LC registration; it is not a compliance screening control."
+        },
+        {
+          "name": "IsActive",
+          "display": "Active",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        },
+        {
+          "name": "SortOrder",
+          "display": "Sort Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "100"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "Currencies",
+      "title": "14_Currencies",
+      "description": "Currency master with the reporting FX rate used to normalise mixed-currency exposure to USD.",
+      "enableVersioning": true,
+      "majorVersions": 50,
+      "titleField": {
+        "display": "Currency Code",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "CurrencyName",
+          "display": "Currency Name",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "CurrencySymbol",
+          "display": "Symbol",
+          "type": "Text",
+          "maxLength": 10
+        },
+        {
+          "name": "DecimalPlaces",
+          "display": "Decimal Places",
+          "type": "Number",
+          "decimals": 0,
+          "default": "2"
+        },
+        {
+          "name": "RateToUSD",
+          "display": "Rate to USD",
+          "type": "Number",
+          "decimals": 6,
+          "default": "1"
+        },
+        {
+          "name": "RateUpdatedDate",
+          "display": "Rate Updated",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "IsActive",
+          "display": "Active",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        },
+        {
+          "name": "SortOrder",
+          "display": "Sort Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "100"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "DocumentTypes",
+      "title": "15_DocumentTypes",
+      "description": "Document type master. Drives the Document Centre type picker, the checklist templates and the library routing rules - nothing is hard-coded in the app.",
+      "enableVersioning": true,
+      "majorVersions": 50,
+      "titleField": {
+        "display": "Document Type",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "DocumentTypeCode",
+          "display": "Code",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "DocumentCategory",
+          "display": "Category",
+          "type": "Choice",
+          "choices": [
+            "LC Instrument",
+            "Commercial",
+            "Transport",
+            "Insurance",
+            "Official / Certificate",
+            "Bank",
+            "Internal"
+          ],
+          "default": "Commercial",
+          "indexed": true
+        },
+        {
+          "name": "TargetLibrary",
+          "display": "Target Library",
+          "type": "Choice",
+          "choices": [
+            "ExportLCDocuments",
+            "ExportLCInvoices",
+            "ExportLCShippingDocuments",
+            "ExportLCBankCorrespondence"
+          ],
+          "default": "ExportLCDocuments",
+          "required": true,
+          "note": "Routing rule the upload component uses to decide which library a file lands in."
+        },
+        {
+          "name": "IsDefaultRequired",
+          "display": "Required by Default",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "RequiresOriginal",
+          "display": "Original Required",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "DefaultCopies",
+          "display": "Default Copies",
+          "type": "Number",
+          "decimals": 0,
+          "default": "1"
+        },
+        {
+          "name": "RequiresReview",
+          "display": "Requires Review",
+          "type": "Boolean",
+          "default": "1"
+        },
+        {
+          "name": "IsActive",
+          "display": "Active",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        },
+        {
+          "name": "SortOrder",
+          "display": "Sort Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "100"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "StatusMaster",
+      "title": "16_StatusMaster",
+      "description": "Status master AND workflow transition table. Every status shown anywhere in the portal, its badge colour, its lifecycle stage and the list of statuses it may legally move to are defined here. This is what makes section 35's controlled transitions configurable rather than coded.",
+      "enableVersioning": true,
+      "majorVersions": 100,
+      "titleField": {
+        "display": "Status Value",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "EntityName",
+          "display": "Entity",
+          "type": "Choice",
+          "choices": [
+            "ExportLC",
+            "Amendment",
+            "Invoice",
+            "Shipment",
+            "Presentation",
+            "Discrepancy",
+            "Proceeds",
+            "Correspondence",
+            "Task",
+            "Document"
+          ],
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "StatusCode",
+          "display": "Status Code",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "StatusDisplayName",
+          "display": "Display Name",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "LifecycleStage",
+          "display": "Lifecycle Stage",
+          "type": "Text",
+          "maxLength": 50,
+          "note": "Maps a status onto the workspace progress tracker (Received > Reviewed > Active > Shipment > Presentation > Examination > Acceptance > Payment > Closed)."
+        },
+        {
+          "name": "StageOrder",
+          "display": "Stage Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "BadgeColor",
+          "display": "Badge Colour",
+          "type": "Text",
+          "maxLength": 20,
+          "note": "Semantic token name from the app theme: Neutral, Info, Progress, Success, Warning, Danger, Muted."
+        },
+        {
+          "name": "AllowedNextStatuses",
+          "display": "Allowed Next Statuses",
+          "type": "Note",
+          "note": "Semicolon-separated status codes. Empty means terminal. The app blocks any transition not listed here and the block reason is shown to the user."
+        },
+        {
+          "name": "RequiresApproval",
+          "display": "Requires Approval",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "ApprovalRoleCode",
+          "display": "Approval Role",
+          "type": "Text",
+          "maxLength": 50
+        },
+        {
+          "name": "RequiresComment",
+          "display": "Requires Comment",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "IsOpenState",
+          "display": "Counts as Open",
+          "type": "Boolean",
+          "default": "1"
+        },
+        {
+          "name": "IsTerminal",
+          "display": "Terminal State",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "IsActive",
+          "display": "Active",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        },
+        {
+          "name": "SortOrder",
+          "display": "Sort Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "100"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "UserRoles",
+      "title": "17_Users",
+      "description": "Application role assignment. SharePoint groups control what a user can physically reach; this list controls what the portal shows and enables. Both are applied - see docs/05-security-roles.md.",
+      "enableVersioning": true,
+      "majorVersions": 100,
+      "titleField": {
+        "display": "Display Name",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "UserEmail",
+          "display": "Email",
+          "type": "Text",
+          "maxLength": 150,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "UserAccount",
+          "display": "User",
+          "type": "User",
+          "indexed": true
+        },
+        {
+          "name": "RoleCode",
+          "display": "Role",
+          "type": "Choice",
+          "choices": [
+            "ADMIN",
+            "MANAGER",
+            "OFFICER",
+            "REVIEWER",
+            "READONLY"
+          ],
+          "default": "READONLY",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "Department",
+          "display": "Department",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "JobTitle",
+          "display": "Job Title",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "ManagerEmail",
+          "display": "Manager Email",
+          "type": "Text",
+          "maxLength": 150,
+          "note": "Escalation target for discrepancy and overdue-task escalation flows."
+        },
+        {
+          "name": "CustomerScope",
+          "display": "Customer Scope",
+          "type": "Note",
+          "note": "Optional semicolon-separated customer codes. Empty means all customers. Applied as an extra filter in the app for officers who only handle a portfolio."
+        },
+        {
+          "name": "ApprovalLimit",
+          "display": "Approval Limit",
+          "type": "Currency",
+          "decimals": 2,
+          "note": "Used by 18_WorkflowConfig approval rules to pick an approver by amount."
+        },
+        {
+          "name": "ReceivesDigest",
+          "display": "Receives Daily Digest",
+          "type": "Boolean",
+          "default": "1"
+        },
+        {
+          "name": "IsActive",
+          "display": "Active",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "WorkflowConfig",
+      "title": "18_WorkflowConfig",
+      "description": "Central configuration store. Reminder offsets, approval thresholds, escalation days, ID patterns, critical audit fields and dashboard thresholds all live here as key/value rows. Changing behaviour is a list edit, not a redeploy.",
+      "enableVersioning": true,
+      "majorVersions": 200,
+      "titleField": {
+        "display": "Config Key",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "ConfigGroup",
+          "display": "Group",
+          "type": "Choice",
+          "choices": [
+            "Reminders",
+            "Escalation",
+            "Approvals",
+            "Validation",
+            "Numbering",
+            "Dashboard",
+            "Audit",
+            "Import",
+            "Email",
+            "General"
+          ],
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "ConfigValue",
+          "display": "Value",
+          "type": "Note",
+          "required": true
+        },
+        {
+          "name": "ValueType",
+          "display": "Value Type",
+          "type": "Choice",
+          "choices": [
+            "Number",
+            "Text",
+            "Boolean",
+            "Date",
+            "CSV",
+            "JSON"
+          ],
+          "default": "Text"
+        },
+        {
+          "name": "ConfigDescription",
+          "display": "Description",
+          "type": "Note"
+        },
+        {
+          "name": "AppliesTo",
+          "display": "Applies To",
+          "type": "Text",
+          "maxLength": 100
+        },
+        {
+          "name": "IsActive",
+          "display": "Active",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        },
+        {
+          "name": "SortOrder",
+          "display": "Sort Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "100"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "DocChecklistTemplates",
+      "title": "19_DocChecklistTemplates",
+      "description": "ADDED to the requested architecture. Requirement 14 asks for a configurable, non-hard-coded document checklist; that needs a template layer. Rules here say which document types are required, matched by any combination of LC type, country, customer and Incoterm. Most specific match wins.",
+      "enableVersioning": true,
+      "majorVersions": 100,
+      "titleField": {
+        "display": "Template Name",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "TemplateCode",
+          "display": "Template Code",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "AppliesToLCType",
+          "display": "LC Type",
+          "type": "Text",
+          "maxLength": 50,
+          "indexed": true,
+          "note": "Blank = any."
+        },
+        {
+          "name": "AppliesToCountry",
+          "display": "Country",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true,
+          "note": "Blank = any."
+        },
+        {
+          "name": "AppliesToCustomerCode",
+          "display": "Customer Code",
+          "type": "Text",
+          "maxLength": 50,
+          "indexed": true,
+          "note": "Blank = any."
+        },
+        {
+          "name": "AppliesToIncoterm",
+          "display": "Incoterm",
+          "type": "Text",
+          "maxLength": 20,
+          "note": "Blank = any. CIF/CIP templates require an insurance certificate; FOB/EXW do not."
+        },
+        {
+          "name": "DocumentTypeCode",
+          "display": "Document Type",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "DocumentTypeName",
+          "display": "Document Type Name",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "IsRequired",
+          "display": "Required",
+          "type": "Boolean",
+          "default": "1"
+        },
+        {
+          "name": "RequiredOriginals",
+          "display": "Originals Required",
+          "type": "Number",
+          "decimals": 0,
+          "default": "1"
+        },
+        {
+          "name": "RequiredCopies",
+          "display": "Copies Required",
+          "type": "Number",
+          "decimals": 0,
+          "default": "2"
+        },
+        {
+          "name": "RequiresReview",
+          "display": "Requires Review",
+          "type": "Boolean",
+          "default": "1"
+        },
+        {
+          "name": "Specificity",
+          "display": "Specificity",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0",
+          "indexed": true,
+          "note": "Count of non-blank match criteria. The app selects the highest-specificity matching template set."
+        },
+        {
+          "name": "IsActive",
+          "display": "Active",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        },
+        {
+          "name": "SortOrder",
+          "display": "Sort Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "100"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "LCDocumentChecklist",
+      "title": "20_LCDocumentChecklist",
+      "description": "ADDED. Per-LC checklist instance, materialised from 19_DocChecklistTemplates when an LC is registered. Instances are editable per LC without touching the template, and MissingDocumentCount on the LC is driven from here.",
+      "enableVersioning": true,
+      "majorVersions": 100,
+      "titleField": {
+        "display": "Checklist Item",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "InternalLCID",
+          "display": "Internal LC ID",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "LCItemId",
+          "display": "LC Item ID",
+          "type": "Number",
+          "decimals": 0,
+          "indexed": true,
+          "required": true
+        },
+        {
+          "name": "LCNumber",
+          "display": "LC Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "PresentationNumber",
+          "display": "Presentation Number",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true,
+          "note": "Blank = LC-level checklist; set = per-presentation checklist."
+        },
+        {
+          "name": "DocumentTypeCode",
+          "display": "Document Type",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "DocumentTypeName",
+          "display": "Document Type Name",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "IsRequired",
+          "display": "Required",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        },
+        {
+          "name": "IsReceived",
+          "display": "Received",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "ReceivedDate",
+          "display": "Received Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "IsReviewed",
+          "display": "Reviewed",
+          "type": "Boolean",
+          "default": "0",
+          "indexed": true
+        },
+        {
+          "name": "ReviewedBy",
+          "display": "Reviewed By",
+          "type": "User"
+        },
+        {
+          "name": "ReviewedDate",
+          "display": "Reviewed Date",
+          "type": "DateTime",
+          "format": "DateOnly"
+        },
+        {
+          "name": "OriginalsRequired",
+          "display": "Originals Required",
+          "type": "Number",
+          "decimals": 0,
+          "default": "1"
+        },
+        {
+          "name": "OriginalsReceived",
+          "display": "Originals Received",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "CopiesRequired",
+          "display": "Copies Required",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "CopiesReceived",
+          "display": "Copies Received",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "DocumentUrl",
+          "display": "Document Link",
+          "type": "URL"
+        },
+        {
+          "name": "ChecklistStatus",
+          "display": "Status",
+          "type": "Choice",
+          "choices": [
+            "Missing",
+            "Pending Review",
+            "Complete",
+            "Waived",
+            "Not Applicable"
+          ],
+          "default": "Missing",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "WaivedReason",
+          "display": "Waiver Reason",
+          "type": "Note"
+        },
+        {
+          "name": "ChecklistNotes",
+          "display": "Notes",
+          "type": "Note"
+        },
+        {
+          "name": "SortOrder",
+          "display": "Sort Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "100"
+        }
+      ],
+      "views": [
+        {
+          "name": "Missing Documents",
+          "fields": [
+            "Title",
+            "LCNumber",
+            "DocumentTypeName",
+            "IsRequired",
+            "IsReceived",
+            "ChecklistStatus"
+          ],
+          "query": "<Where><And><Eq><FieldRef Name='IsRequired'/><Value Type='Boolean'>1</Value></Eq><Eq><FieldRef Name='IsReceived'/><Value Type='Boolean'>0</Value></Eq></And></Where>",
+          "rowLimit": 200
+        }
+      ]
+    },
+    {
+      "name": "Incoterms",
+      "title": "21_Incoterms",
+      "description": "ADDED. Requirement 20 lists Incoterms as admin-managed master data; the original list of 18 lists had no home for it.",
+      "enableVersioning": true,
+      "majorVersions": 50,
+      "titleField": {
+        "display": "Incoterm Code",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "IncotermName",
+          "display": "Name",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "IncotermVersion",
+          "display": "Rules Version",
+          "type": "Text",
+          "maxLength": 20,
+          "default": "2020"
+        },
+        {
+          "name": "TransportMode",
+          "display": "Transport Mode",
+          "type": "Choice",
+          "choices": [
+            "Any Mode",
+            "Sea and Inland Waterway"
+          ],
+          "default": "Any Mode"
+        },
+        {
+          "name": "InsuranceBySeller",
+          "display": "Insurance by Seller",
+          "type": "Boolean",
+          "default": "0",
+          "note": "True for CIF and CIP - drives whether the checklist template requires an insurance certificate."
+        },
+        {
+          "name": "IsActive",
+          "display": "Active",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        },
+        {
+          "name": "SortOrder",
+          "display": "Sort Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "100"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "Ports",
+      "title": "22_Ports",
+      "description": "ADDED. Port/airport master for loading, discharge and destination pickers.",
+      "enableVersioning": true,
+      "majorVersions": 50,
+      "titleField": {
+        "display": "Port Name",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "PortCode",
+          "display": "UN/LOCODE",
+          "type": "Text",
+          "maxLength": 10,
+          "indexed": true
+        },
+        {
+          "name": "PortType",
+          "display": "Type",
+          "type": "Choice",
+          "choices": [
+            "Sea Port",
+            "Airport",
+            "Inland / Dry Port",
+            "Border Crossing"
+          ],
+          "default": "Sea Port",
+          "indexed": true
+        },
+        {
+          "name": "CountryName",
+          "display": "Country",
+          "type": "Text",
+          "maxLength": 100,
+          "indexed": true
+        },
+        {
+          "name": "IsActive",
+          "display": "Active",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        },
+        {
+          "name": "SortOrder",
+          "display": "Sort Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "100"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "LCTypes",
+      "title": "23_LCTypes",
+      "description": "ADDED. LC product master driving default terms on registration.",
+      "enableVersioning": true,
+      "majorVersions": 50,
+      "titleField": {
+        "display": "LC Type",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "LCTypeCode",
+          "display": "Code",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "DefaultAvailableBy",
+          "display": "Default Available By",
+          "type": "Text",
+          "maxLength": 50
+        },
+        {
+          "name": "DefaultPresentationDays",
+          "display": "Default Presentation Period",
+          "type": "Number",
+          "decimals": 0,
+          "default": "21"
+        },
+        {
+          "name": "DefaultIrrevocable",
+          "display": "Default Irrevocable",
+          "type": "Boolean",
+          "default": "1"
+        },
+        {
+          "name": "RequiresConfirmation",
+          "display": "Confirmation Expected",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "LCTypeDescription",
+          "display": "Description",
+          "type": "Note"
+        },
+        {
+          "name": "IsActive",
+          "display": "Active",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        },
+        {
+          "name": "SortOrder",
+          "display": "Sort Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "100"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "DiscrepancyCategories",
+      "title": "24_DiscrepancyCategories",
+      "description": "ADDED. Requirement 28 explicitly forbids hard-coding discrepancy categories, so they need their own master list with default severity and escalation behaviour.",
+      "enableVersioning": true,
+      "majorVersions": 50,
+      "titleField": {
+        "display": "Category Name",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "CategoryCode",
+          "display": "Code",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "CategoryGroup",
+          "display": "Group",
+          "type": "Choice",
+          "choices": [
+            "Documentary",
+            "Transport",
+            "Insurance",
+            "Commercial",
+            "Timing",
+            "Amount",
+            "Data Consistency",
+            "Other"
+          ],
+          "default": "Documentary",
+          "indexed": true
+        },
+        {
+          "name": "DefaultSeverity",
+          "display": "Default Severity",
+          "type": "Choice",
+          "choices": [
+            "Minor",
+            "Major",
+            "Critical"
+          ],
+          "default": "Major"
+        },
+        {
+          "name": "DefaultResolutionDays",
+          "display": "Default Resolution Days",
+          "type": "Number",
+          "decimals": 0,
+          "default": "3"
+        },
+        {
+          "name": "UsuallyRequiresWaiver",
+          "display": "Usually Requires Waiver",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "EscalateAfterDays",
+          "display": "Escalate After (days)",
+          "type": "Number",
+          "decimals": 0,
+          "default": "5"
+        },
+        {
+          "name": "GuidanceText",
+          "display": "Handling Guidance",
+          "type": "Note",
+          "note": "Shown inline to the officer when the category is selected."
+        },
+        {
+          "name": "IsActive",
+          "display": "Active",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        },
+        {
+          "name": "SortOrder",
+          "display": "Sort Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "100"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "PaymentTerms",
+      "title": "25_PaymentTerms",
+      "description": "ADDED. Seeded from the legacy Payment Term sheet. Tenor days and the maturity basis are captured so due dates can be calculated instead of typed.",
+      "enableVersioning": true,
+      "majorVersions": 50,
+      "titleField": {
+        "display": "Payment Term",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "PaymentTermCode",
+          "display": "Code",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "SettlementType",
+          "display": "Settlement Type",
+          "type": "Choice",
+          "choices": [
+            "Sight",
+            "Deferred",
+            "Acceptance",
+            "Negotiation",
+            "Mixed"
+          ],
+          "default": "Deferred",
+          "indexed": true
+        },
+        {
+          "name": "TenorDays",
+          "display": "Tenor (days)",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "MaturityBasis",
+          "display": "Maturity Calculated From",
+          "type": "Choice",
+          "choices": [
+            "Shipment Date",
+            "Transport Document Date",
+            "Presentation Date",
+            "Acceptance Date",
+            "Invoice Date",
+            "TCN Date",
+            "Sight"
+          ],
+          "default": "Shipment Date",
+          "note": "TCN = transport/clean collection note, the basis used by the customer's '180 Days From TCN' terms."
+        },
+        {
+          "name": "IsActive",
+          "display": "Active",
+          "type": "Boolean",
+          "default": "1",
+          "indexed": true
+        },
+        {
+          "name": "SortOrder",
+          "display": "Sort Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "100"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "NotificationLog",
+      "title": "26_NotificationLog",
+      "description": "ADDED. Every reminder and escalation a flow sends is logged here before sending. Flows check it first, which is what stops the 30/14/7-day reminders re-firing every single day - a failure mode that kills user trust in notifications faster than anything else.",
+      "enableVersioning": false,
+      "titleField": {
+        "display": "Notification Key",
+        "required": true,
+        "indexed": true,
+        "note": "Format {RuleCode}:{RecordRef}:{Offset}. Uniqueness of this key is what makes the flows idempotent."
+      },
+      "fields": [
+        {
+          "name": "RuleCode",
+          "display": "Rule",
+          "type": "Text",
+          "maxLength": 100,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "EntityName",
+          "display": "Entity",
+          "type": "Text",
+          "maxLength": 50,
+          "indexed": true
+        },
+        {
+          "name": "RecordReference",
+          "display": "Record Reference",
+          "type": "Text",
+          "maxLength": 150,
+          "indexed": true
+        },
+        {
+          "name": "InternalLCID",
+          "display": "Internal LC ID",
+          "type": "Text",
+          "maxLength": 50,
+          "indexed": true
+        },
+        {
+          "name": "RecipientEmail",
+          "display": "Recipient",
+          "type": "Text",
+          "maxLength": 255
+        },
+        {
+          "name": "OffsetDays",
+          "display": "Offset Days",
+          "type": "Number",
+          "decimals": 0
+        },
+        {
+          "name": "SentTimestamp",
+          "display": "Sent",
+          "type": "DateTime",
+          "format": "DateTime",
+          "indexed": true
+        },
+        {
+          "name": "SendStatus",
+          "display": "Send Status",
+          "type": "Choice",
+          "choices": [
+            "Sent",
+            "Failed",
+            "Suppressed"
+          ],
+          "default": "Sent",
+          "indexed": true
+        },
+        {
+          "name": "FailureReason",
+          "display": "Failure Reason",
+          "type": "Note"
+        },
+        {
+          "name": "PartitionKey",
+          "display": "Partition",
+          "type": "Text",
+          "maxLength": 10,
+          "indexed": true
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "ImportBatches",
+      "title": "27_ImportBatches",
+      "description": "ADDED. Requirement 29 asks for a safe import with preview, error report and a record of what succeeded. Each import run gets one batch row; every staged record points back to it, so a bad import can be identified and reversed.",
+      "enableVersioning": true,
+      "majorVersions": 50,
+      "titleField": {
+        "display": "Batch ID",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "SourceFileName",
+          "display": "Source File",
+          "type": "Text",
+          "maxLength": 255
+        },
+        {
+          "name": "ImportType",
+          "display": "Import Type",
+          "type": "Choice",
+          "choices": [
+            "Export LCs",
+            "Invoices",
+            "Shipments",
+            "Customers",
+            "Banks",
+            "Combined Tracker"
+          ],
+          "default": "Combined Tracker",
+          "indexed": true
+        },
+        {
+          "name": "ImportedByEmail",
+          "display": "Imported By",
+          "type": "Text",
+          "maxLength": 150,
+          "indexed": true
+        },
+        {
+          "name": "StartedAt",
+          "display": "Started",
+          "type": "DateTime",
+          "format": "DateTime",
+          "indexed": true
+        },
+        {
+          "name": "CompletedAt",
+          "display": "Completed",
+          "type": "DateTime",
+          "format": "DateTime"
+        },
+        {
+          "name": "RowsRead",
+          "display": "Rows Read",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "RowsValid",
+          "display": "Rows Valid",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "RowsWarning",
+          "display": "Rows With Warnings",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "RowsRejected",
+          "display": "Rows Rejected",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "RowsCommitted",
+          "display": "Rows Committed",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "DuplicatesFound",
+          "display": "Duplicates Found",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "BatchStatus",
+          "display": "Status",
+          "type": "Choice",
+          "choices": [
+            "Uploaded",
+            "Validating",
+            "Preview Ready",
+            "Committing",
+            "Committed",
+            "Failed",
+            "Cancelled",
+            "Rolled Back"
+          ],
+          "default": "Uploaded",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "ErrorReportUrl",
+          "display": "Error Report",
+          "type": "URL"
+        },
+        {
+          "name": "BatchNotes",
+          "display": "Notes",
+          "type": "Note"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "ImportStaging",
+      "title": "28_ImportStaging",
+      "description": "ADDED. Rows land here first and are never written to the live lists until an admin reviews the preview and presses Commit. This is the mechanism behind 'never blindly import bad data'.",
+      "enableVersioning": false,
+      "titleField": {
+        "display": "Staging Row Key",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "ImportBatchId",
+          "display": "Import Batch",
+          "type": "Text",
+          "maxLength": 50,
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "SourceRowNumber",
+          "display": "Source Row",
+          "type": "Number",
+          "decimals": 0,
+          "indexed": true
+        },
+        {
+          "name": "TargetList",
+          "display": "Target List",
+          "type": "Choice",
+          "choices": [
+            "01_ExportLCs",
+            "03_Invoices",
+            "04_Shipments",
+            "11_Customers",
+            "12_Banks"
+          ],
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "PayloadJson",
+          "display": "Payload",
+          "type": "Note",
+          "note": "The normalised record as JSON. Committing simply patches this payload into the target list."
+        },
+        {
+          "name": "ValidationState",
+          "display": "Validation",
+          "type": "Choice",
+          "choices": [
+            "Valid",
+            "Warning",
+            "Rejected",
+            "Duplicate",
+            "Committed"
+          ],
+          "default": "Valid",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "ValidationMessages",
+          "display": "Messages",
+          "type": "Note"
+        },
+        {
+          "name": "DuplicateOfItemId",
+          "display": "Duplicate Of",
+          "type": "Number",
+          "decimals": 0
+        },
+        {
+          "name": "DuplicateKey",
+          "display": "Duplicate Key",
+          "type": "Text",
+          "maxLength": 255,
+          "indexed": true
+        },
+        {
+          "name": "DuplicateAction",
+          "display": "Duplicate Action",
+          "type": "Choice",
+          "choices": [
+            "Skip",
+            "Update Existing",
+            "Create New"
+          ],
+          "default": "Skip"
+        },
+        {
+          "name": "CommittedItemId",
+          "display": "Committed Item ID",
+          "type": "Number",
+          "decimals": 0
+        },
+        {
+          "name": "CommittedAt",
+          "display": "Committed At",
+          "type": "DateTime",
+          "format": "DateTime"
+        }
+      ],
+      "views": []
+    },
+    {
+      "name": "DashboardMetrics",
+      "title": "29_DashboardMetrics",
+      "description": "ADDED. Pre-aggregated dashboard counters. CountRows() is not delegable against SharePoint, so on a 5,000+ LC register an in-app count would silently be wrong (capped at the 2,000 row limit). FLOW-11 recomputes every metric server-side on a schedule and on demand, and the dashboard reads 20 small rows instead of scanning the register. This is what lets requirement 30's volumes work.",
+      "enableVersioning": false,
+      "titleField": {
+        "display": "Metric Key",
+        "required": true,
+        "indexed": true
+      },
+      "fields": [
+        {
+          "name": "MetricGroup",
+          "display": "Group",
+          "type": "Choice",
+          "choices": [
+            "Portfolio",
+            "Deadlines",
+            "Documents",
+            "Presentations",
+            "Discrepancies",
+            "Proceeds",
+            "Tasks",
+            "Exposure"
+          ],
+          "indexed": true
+        },
+        {
+          "name": "MetricScope",
+          "display": "Scope",
+          "type": "Text",
+          "maxLength": 150,
+          "indexed": true,
+          "note": "ALL for the portfolio-wide figure, or a user email for a per-officer figure. The dashboard reads both and shows 'mine' or 'all' on a toggle."
+        },
+        {
+          "name": "MetricCount",
+          "display": "Count",
+          "type": "Number",
+          "decimals": 0,
+          "default": "0"
+        },
+        {
+          "name": "MetricAmount",
+          "display": "Amount",
+          "type": "Currency",
+          "decimals": 2,
+          "default": "0"
+        },
+        {
+          "name": "MetricCurrency",
+          "display": "Currency",
+          "type": "Text",
+          "maxLength": 10,
+          "default": "USD"
+        },
+        {
+          "name": "MetricLabel",
+          "display": "Display Label",
+          "type": "Text",
+          "maxLength": 150
+        },
+        {
+          "name": "MetricSubLabel",
+          "display": "Sub Label",
+          "type": "Text",
+          "maxLength": 255
+        },
+        {
+          "name": "DrillTarget",
+          "display": "Drill Target",
+          "type": "Text",
+          "maxLength": 100,
+          "note": "Register preset key the KPI card navigates to, e.g. EXPIRING_SOON. Keeps the drill-through configurable instead of coded into the card."
+        },
+        {
+          "name": "IsUrgent",
+          "display": "Urgent",
+          "type": "Boolean",
+          "default": "0"
+        },
+        {
+          "name": "ComputedAt",
+          "display": "Computed At",
+          "type": "DateTime",
+          "format": "DateTime",
+          "indexed": true
+        },
+        {
+          "name": "ComputeDurationMs",
+          "display": "Compute Duration (ms)",
+          "type": "Number",
+          "decimals": 0
+        },
+        {
+          "name": "SortOrder",
+          "display": "Sort Order",
+          "type": "Number",
+          "decimals": 0,
+          "default": "100"
+        }
+      ],
+      "views": []
+    }
+  ]
+}

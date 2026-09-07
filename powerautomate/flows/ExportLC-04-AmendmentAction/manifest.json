@@ -1,0 +1,51 @@
+{
+  "properties": {
+    "packageSchemaVersion": "1.0",
+    "details": {
+      "displayName": "Amendment awaiting action",
+      "description": "Chases amendments sitting in Pending Acceptance, and warns when an accepted amendment has not been applied to its LC.",
+      "createdTime": "2026-01-01T00:00:00Z",
+      "packageTelemetryId": "ExportLC-04-AmendmentAction"
+    },
+    "resources": {
+      "FLOW": {
+        "id": "/providers/Microsoft.Flow/flows/00000000-0000-0000-0000-000000000000",
+        "name": "ExportLC-04-AmendmentAction",
+        "type": "Microsoft.Flow/flows",
+        "suggestedCreationType": "New",
+        "creationType": "New, Existing, Update",
+        "details": {
+          "displayName": "Amendment awaiting action"
+        },
+        "configurableBy": "User",
+        "hierarchy": "Root",
+        "dependsOn": [
+          "SHAREPOINT_CONNECTION",
+          "OUTLOOK_CONNECTION"
+        ]
+      },
+      "SHAREPOINT_CONNECTION": {
+        "type": "Microsoft.PowerApps/apis/connections",
+        "suggestedCreationType": "Existing",
+        "creationType": "Existing",
+        "details": {
+          "displayName": "SharePoint"
+        },
+        "configurableBy": "User",
+        "hierarchy": "Child",
+        "dependsOn": []
+      },
+      "OUTLOOK_CONNECTION": {
+        "type": "Microsoft.PowerApps/apis/connections",
+        "suggestedCreationType": "Existing",
+        "creationType": "Existing",
+        "details": {
+          "displayName": "Office 365 Outlook"
+        },
+        "configurableBy": "User",
+        "hierarchy": "Child",
+        "dependsOn": []
+      }
+    }
+  }
+}

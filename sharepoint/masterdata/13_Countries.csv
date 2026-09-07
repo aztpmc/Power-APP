@@ -1,0 +1,25 @@
+﻿Title,CountryCode,Region,RiskRating,RequiresConfirmation,IsSanctioned,IsActive,SortOrder
+Algeria,DZ,North Africa,Medium,FALSE,FALSE,TRUE,100
+Bahrain,BH,Middle East,Low,FALSE,FALSE,TRUE,100
+Egypt,EG,North Africa,Medium,FALSE,FALSE,TRUE,100
+Ethiopia,ET,East Africa,High,TRUE,FALSE,TRUE,100
+Export Head,,,Medium,FALSE,FALSE,TRUE,100
+France,,,Medium,FALSE,FALSE,TRUE,100
+Iraq,IQ,Middle East,High,TRUE,FALSE,TRUE,100
+Jordan,JO,Middle East,Medium,FALSE,FALSE,TRUE,100
+Kazakhstan,,,Medium,FALSE,FALSE,TRUE,100
+Kuwait,KW,Middle East,Low,FALSE,FALSE,TRUE,100
+Lebanon,LB,Middle East,High,TRUE,FALSE,TRUE,100
+Libya,LY,North Africa,High,TRUE,FALSE,TRUE,100
+Malaysia,,,Medium,FALSE,FALSE,TRUE,100
+Morocco,MA,North Africa,Medium,FALSE,FALSE,TRUE,100
+Oman,OM,Middle East,Low,FALSE,FALSE,TRUE,100
+Poland,,,Medium,FALSE,FALSE,TRUE,100
+Qatar,QA,Middle East,Low,FALSE,FALSE,TRUE,100
+Russia,,,Medium,FALSE,FALSE,TRUE,100
+Sudan,SD,East Africa,High,TRUE,FALSE,TRUE,100
+Sweden,,,Medium,FALSE,FALSE,TRUE,100
+Tabuk Factory,,,Medium,FALSE,FALSE,TRUE,100
+Tunisia,TN,North Africa,Medium,FALSE,FALSE,TRUE,100
+UAE,AE,Middle East,Low,FALSE,FALSE,TRUE,100
+Yemen,YE,Middle East,High,TRUE,FALSE,TRUE,100

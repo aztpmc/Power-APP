@@ -1,0 +1,17 @@
+Title,MetricGroup,MetricScope,MetricCount,MetricAmount,MetricCurrency,MetricLabel,MetricSubLabel,DrillTarget,IsUrgent,SortOrder
+ACTIVE_LCS,Portfolio,ALL,0,0,USD,Active LCs,Open credits on the book,ACTIVE,FALSE,10
+NEW_LCS,Portfolio,ALL,0,0,USD,New LCs,Received recently,NEW,FALSE,20
+PENDING_ACTION,Portfolio,ALL,0,0,USD,Pending Action,Received or under review,PENDING_ACTION,FALSE,30
+EXPIRING_SOON,Deadlines,ALL,0,0,USD,Expiring Soon,Credits approaching expiry,EXPIRING_SOON,TRUE,40
+EXPIRED,Deadlines,ALL,0,0,USD,Expired,Past expiry and still open,EXPIRED,TRUE,50
+SHIPMENT_SOON,Deadlines,ALL,0,0,USD,Shipment Deadline,Latest shipment date approaching,SHIPMENT_SOON,TRUE,60
+SHIPMENT_OVERDUE,Deadlines,ALL,0,0,USD,Shipment Overdue,Past latest shipment date,SHIPMENT_OVERDUE,TRUE,70
+PENDING_AMENDMENTS,Portfolio,ALL,0,0,USD,Pending Amendments,Not yet applied to the LC,PENDING_AMENDMENTS,FALSE,80
+MISSING_DOCS,Documents,ALL,0,0,USD,Missing Documents,LCs with required documents outstanding,MISSING_DOCS,FALSE,90
+PENDING_PRESENTATIONS,Presentations,ALL,0,0,USD,Pending Presentations,Draft or ready to present,PENDING_PRESENTATIONS,FALSE,100
+OPEN_DISCREPANCIES,Discrepancies,ALL,0,0,USD,Open Discrepancies,Unresolved bank findings,OPEN_DISCREPANCIES,TRUE,110
+OUTSTANDING_PROCEEDS,Proceeds,ALL,0,0,USD,Outstanding Proceeds,Accepted but not yet received,OUTSTANDING_PROCEEDS,FALSE,120
+PROCEEDS_OVERDUE,Proceeds,ALL,0,0,USD,Proceeds Overdue,Past maturity and unpaid,PROCEEDS_OVERDUE,TRUE,130
+OVERDUE_TASKS,Tasks,ALL,0,0,USD,Overdue Tasks,Past their due date,OVERDUE_TASKS,TRUE,140
+DUE_TODAY_TASKS,Tasks,ALL,0,0,USD,Tasks Due Today,Due today across the team,TASKS_TODAY,FALSE,150
+TOTAL_EXPOSURE,Exposure,ALL,0,0,USD,Total Exposure,Outstanding across all open LCs,ACTIVE,FALSE,160

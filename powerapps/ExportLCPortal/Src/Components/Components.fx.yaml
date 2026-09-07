@@ -1,0 +1,1052 @@
+# =============================================================================
+# Export LC Portal - reusable canvas components
+# =============================================================================
+# Seven components carry the portal's visual identity. Every screen is assembled from
+# these plus galleries, so a change to a badge or a card is made once.
+#
+# IMPORTANT - two ways to get these into an app:
+#
+#   A) pac canvas pack, with this file under Src/Components/. The CustomProperties blocks
+#      below are what the packer reads to create the input properties.
+#
+#   B) If your pac CLI version rejects the CustomProperties syntax (it changed between
+#      major versions), create each component in Studio, add the input properties listed in
+#      the "PROPERTIES" comment at the top of each component, then paste the child controls.
+#      The property names and types are identical either way, so the child formulas work
+#      unchanged.
+#
+# Components never read data. They take values as input properties and raise OnSelect
+# behaviour outward. That keeps them delegation-neutral and reusable across screens.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# cmpStatusBadge - the status pill used in every register, workspace and report.
+# PROPERTIES  Entity(Text)  StatusCode(Text)  BadgeWidth(Number)
+# -----------------------------------------------------------------------------
+cmpStatusBadge As CanvasComponent:
+    Height: =24
+    Width: =120
+    Fill: =RGBA(0, 0, 0, 0)
+    CustomProperties:
+        Entity:
+            PropertyKind: Input
+            DisplayName: Entity
+            Description: Entity name as used in 16_StatusMaster, e.g. ExportLC, Invoice, Presentation.
+            DataType: Text
+            Default: ="ExportLC"
+        StatusCode:
+            PropertyKind: Input
+            DisplayName: StatusCode
+            Description: The status value to render.
+            DataType: Text
+            Default: ="Active"
+        BadgeWidth:
+            PropertyKind: Input
+            DisplayName: BadgeWidth
+            Description: Fixed width, or 0 to size to the text.
+            DataType: Number
+            Default: =0
+
+    recBadge As rectangle:
+        X: =0
+        Y: =0
+        Height: =Parent.Height
+        Width: =If(cmpStatusBadge.BadgeWidth > 0, cmpStatusBadge.BadgeWidth, lblBadge.Width + 20)
+        Fill: =StatusBadgeFill(cmpStatusBadge.Entity, cmpStatusBadge.StatusCode)
+        BorderColor: =ColorFade(StatusBadgeColor(cmpStatusBadge.Entity, cmpStatusBadge.StatusCode), 0.65)
+        BorderThickness: =1
+        RadiusTopLeft: =12
+        RadiusTopRight: =12
+        RadiusBottomLeft: =12
+        RadiusBottomRight: =12
+
+    lblBadge As label:
+        X: =10
+        Y: =0
+        Height: =Parent.Height
+        Width: =Self.Height * 0 + Len(Self.Text) * 6.4 + 4
+        Text: =StatusLabel(cmpStatusBadge.Entity, cmpStatusBadge.StatusCode)
+        Color: =StatusBadgeColor(cmpStatusBadge.Entity, cmpStatusBadge.StatusCode)
+        Font: =ThemeFont
+        Size: =ThemeSizeMicro
+        FontWeight: =FontWeight.Semibold
+        VerticalAlign: =VerticalAlign.Middle
+        Align: =Align.Center
+        PaddingLeft: =0
+        PaddingRight: =0
+
+# -----------------------------------------------------------------------------
+# cmpKPICard - a dashboard tile. Always clickable: every KPI in this portal
+# drills through to a filtered register, which is the whole point of the dashboard.
+# PROPERTIES  Caption(Text) Value(Text) Sub(Text) Accent(Color) Urgent(Boolean) OnCardSelect(Behaviour)
+# -----------------------------------------------------------------------------
+cmpKPICard As CanvasComponent:
+    Height: =104
+    Width: =232
+    Fill: =RGBA(0, 0, 0, 0)
+    CustomProperties:
+        Caption:
+            PropertyKind: Input
+            DisplayName: Caption
+            Description: Card label, e.g. "Expiring Soon".
+            DataType: Text
+            Default: ="Metric"
+        Value:
+            PropertyKind: Input
+            DisplayName: Value
+            Description: The headline number, already formatted.
+            DataType: Text
+            Default: ="0"
+        Sub:
+            PropertyKind: Input
+            DisplayName: Sub
+            Description: Secondary line, e.g. "USD 3.9M outstanding" or "next 30 days".
+            DataType: Text
+            Default: =""
+        Accent:
+            PropertyKind: Input
+            DisplayName: Accent
+            Description: Accent bar and value colour.
+            DataType: Color
+            Default: =RGBA(27, 110, 194, 1)
+        Urgent:
+            PropertyKind: Input
+            DisplayName: Urgent
+            Description: When true the card is tinted to pull the eye. Reserve it for things that are actually late.
+            DataType: Boolean
+            Default: =false
+        OnCardSelect:
+            PropertyKind: Event
+            DisplayName: OnCardSelect
+            Description: Runs when the card is clicked. Every card must navigate somewhere useful.
+            ReturnType: None
+
+    btnCard As button:
+        X: =0
+        Y: =0
+        Height: =Parent.Height
+        Width: =Parent.Width
+        Text: =""
+        # A transparent button over the whole card gives keyboard focus and a hover state
+        # for free, which a Rectangle with OnSelect does not.
+        Fill: =If(cmpKPICard.Urgent, ColorFade(cmpKPICard.Accent, 0.93), ThemeSurface)
+        HoverFill: =ColorFade(cmpKPICard.Accent, 0.88)
+        PressedFill: =ColorFade(cmpKPICard.Accent, 0.8)
+        BorderColor: =If(cmpKPICard.Urgent, ColorFade(cmpKPICard.Accent, 0.6), ThemeBorder)
+        HoverBorderColor: =cmpKPICard.Accent
+        BorderThickness: =1
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        OnSelect: =cmpKPICard.OnCardSelect()
+        TabIndex: =0
+        AccessibleLabel: |
+            =cmpKPICard.Caption & ": " & cmpKPICard.Value & ". " & cmpKPICard.Sub
+
+    recAccent As rectangle:
+        X: =0
+        Y: =0
+        Width: =3
+        Height: =Parent.Height
+        Fill: =cmpKPICard.Accent
+        RadiusTopLeft: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        DisplayMode: =DisplayMode.View
+
+    lblCaption As label:
+        X: =ThemeSpace4
+        Y: =ThemeSpace3
+        Width: =Parent.Width - (ThemeSpace4 * 2)
+        Height: =18
+        Text: =Upper(cmpKPICard.Caption)
+        Color: =ThemeTextSecondary
+        Font: =ThemeFont
+        Size: =ThemeSizeMicro
+        FontWeight: =FontWeight.Semibold
+        PaddingLeft: =0
+        DisplayMode: =DisplayMode.View
+
+    lblValue As label:
+        X: =ThemeSpace4
+        Y: =lblCaption.Y + lblCaption.Height + 2
+        Width: =Parent.Width - (ThemeSpace4 * 2)
+        Height: =38
+        Text: =cmpKPICard.Value
+        Color: =If(cmpKPICard.Urgent, cmpKPICard.Accent, ThemeText)
+        Font: =ThemeFont
+        Size: =ThemeSizeDisplay
+        FontWeight: =FontWeight.Semibold
+        PaddingLeft: =0
+        DisplayMode: =DisplayMode.View
+
+    lblSub As label:
+        X: =ThemeSpace4
+        Y: =lblValue.Y + lblValue.Height
+        Width: =Parent.Width - (ThemeSpace4 * 2)
+        Height: =16
+        Text: =cmpKPICard.Sub
+        Color: =ThemeTextMuted
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        PaddingLeft: =0
+        DisplayMode: =DisplayMode.View
+
+# -----------------------------------------------------------------------------
+# cmpStageTracker - the LC lifecycle rail across the top of the workspace.
+# Renders the nine stages and marks the current one. Past stages are solid, the
+# current one is ringed, future ones are hollow.
+# PROPERTIES  CurrentStage(Text) IsCancelled(Boolean)
+# -----------------------------------------------------------------------------
+cmpStageTracker As CanvasComponent:
+    Height: =64
+    Width: =900
+    Fill: =RGBA(0, 0, 0, 0)
+    CustomProperties:
+        CurrentStage:
+            PropertyKind: Input
+            DisplayName: CurrentStage
+            Description: Lifecycle stage name from 16_StatusMaster.LifecycleStage.
+            DataType: Text
+            Default: ="Active"
+        IsCancelled:
+            PropertyKind: Input
+            DisplayName: IsCancelled
+            Description: When true the whole rail is greyed - a cancelled LC has no meaningful progress.
+            DataType: Boolean
+            Default: =false
+
+    galStages As gallery:
+        X: =0
+        Y: =0
+        Height: =Parent.Height
+        Width: =Parent.Width
+        Items: =LifecycleStages
+        TemplateSize: =Parent.Width / CountRows(LifecycleStages)
+        Layout: =Layout.Horizontal
+        ShowScrollbar: =false
+        TemplatePadding: =0
+        DelayItemLoading: =false
+
+        recLine As rectangle:
+            X: =0
+            Y: =18
+            Width: =Parent.TemplateWidth
+            Height: =2
+            # The connector is drawn behind the dot and coloured by whether the stage is reached.
+            Fill: |
+                =If(
+                    cmpStageTracker.IsCancelled, ThemeBorder,
+                    ThisItem.Ord <= Coalesce(LookUp(LifecycleStages, Stage = cmpStageTracker.CurrentStage).Ord, 0),
+                    ThemeAccent,
+                    ThemeBorder
+                )
+
+        recDot As circle:
+            X: =(Parent.TemplateWidth / 2) - 8
+            Y: =11
+            Width: =16
+            Height: =16
+            Fill: |
+                =If(
+                    cmpStageTracker.IsCancelled, ThemeMuted,
+                    ThisItem.Stage = cmpStageTracker.CurrentStage, ThemeAccent,
+                    ThisItem.Ord < Coalesce(LookUp(LifecycleStages, Stage = cmpStageTracker.CurrentStage).Ord, 0), ThemeAccent,
+                    ThemeSurface
+                )
+            BorderColor: |
+                =If(
+                    cmpStageTracker.IsCancelled, ThemeMuted,
+                    ThisItem.Ord <= Coalesce(LookUp(LifecycleStages, Stage = cmpStageTracker.CurrentStage).Ord, 0),
+                    ThemeAccent,
+                    ThemeBorderStrong
+                )
+            BorderThickness: =2
+
+        recRing As circle:
+            X: =(Parent.TemplateWidth / 2) - 13
+            Y: =6
+            Width: =26
+            Height: =26
+            Fill: =RGBA(0, 0, 0, 0)
+            BorderColor: =ColorFade(ThemeAccent, 0.6)
+            BorderThickness: =2
+            Visible: =ThisItem.Stage = cmpStageTracker.CurrentStage && !cmpStageTracker.IsCancelled
+
+        lblStage As label:
+            X: =0
+            Y: =38
+            Width: =Parent.TemplateWidth
+            Height: =20
+            Text: =ThisItem.Stage
+            Align: =Align.Center
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: |
+                =If(ThisItem.Stage = cmpStageTracker.CurrentStage, FontWeight.Semibold, FontWeight.Normal)
+            Color: |
+                =If(
+                    cmpStageTracker.IsCancelled, ThemeTextMuted,
+                    ThisItem.Stage = cmpStageTracker.CurrentStage, ThemeAccent,
+                    ThisItem.Ord < Coalesce(LookUp(LifecycleStages, Stage = cmpStageTracker.CurrentStage).Ord, 0), ThemeText,
+                    ThemeTextMuted
+                )
+
+# -----------------------------------------------------------------------------
+# cmpAlertBanner - the dynamic warnings on the workspace Overview tab
+# ("LC expires in 12 days", "3 required documents missing").
+# PROPERTIES  Severity(Text: Danger|Warning|Info|Success) Message(Text) ActionLabel(Text) OnAction(Behaviour)
+# -----------------------------------------------------------------------------
+cmpAlertBanner As CanvasComponent:
+    Height: =40
+    Width: =600
+    Fill: =RGBA(0, 0, 0, 0)
+    CustomProperties:
+        Severity:
+            PropertyKind: Input
+            DisplayName: Severity
+            Description: Danger, Warning, Info or Success.
+            DataType: Text
+            Default: ="Warning"
+        Message:
+            PropertyKind: Input
+            DisplayName: Message
+            Description: The warning text.
+            DataType: Text
+            Default: =""
+        ActionLabel:
+            PropertyKind: Input
+            DisplayName: ActionLabel
+            Description: Optional link text, e.g. "Open checklist". Blank hides the link.
+            DataType: Text
+            Default: =""
+        OnAction:
+            PropertyKind: Event
+            DisplayName: OnAction
+            Description: Runs when the action link is clicked.
+            ReturnType: None
+
+    recAlert As rectangle:
+        X: =0
+        Y: =0
+        Height: =Parent.Height
+        Width: =Parent.Width
+        Fill: |
+            =Switch(cmpAlertBanner.Severity,
+                "Danger", ThemeDangerSoft, "Warning", ThemeWarningSoft,
+                "Success", ThemeSuccessSoft, ThemeInfoSoft)
+        BorderThickness: =0
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+
+    recAlertBar As rectangle:
+        X: =0
+        Y: =0
+        Width: =3
+        Height: =Parent.Height
+        Fill: |
+            =Switch(cmpAlertBanner.Severity,
+                "Danger", ThemeDanger, "Warning", ThemeWarning,
+                "Success", ThemeSuccess, ThemeInfo)
+        RadiusTopLeft: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+
+    lblAlert As label:
+        X: =ThemeSpace3
+        Y: =0
+        Height: =Parent.Height
+        Width: =Parent.Width - ThemeSpace3 - btnAlertAction.Width - ThemeSpace3
+        Text: =cmpAlertBanner.Message
+        Color: |
+            =Switch(cmpAlertBanner.Severity,
+                "Danger", ThemeDanger, "Warning", ThemeWarning,
+                "Success", ThemeSuccess, ThemeInfo)
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        FontWeight: =FontWeight.Semibold
+        VerticalAlign: =VerticalAlign.Middle
+        PaddingLeft: =0
+
+    btnAlertAction As button:
+        X: =Parent.Width - Self.Width - ThemeSpace3
+        Y: =(Parent.Height - Self.Height) / 2
+        Height: =26
+        Width: =If(Len(cmpAlertBanner.ActionLabel) = 0, 0, Len(cmpAlertBanner.ActionLabel) * 7 + 24)
+        Text: =cmpAlertBanner.ActionLabel
+        Visible: =Len(cmpAlertBanner.ActionLabel) > 0
+        Fill: =RGBA(0, 0, 0, 0)
+        HoverFill: =RGBA(255, 255, 255, 0.6)
+        Color: =ThemeText
+        HoverColor: =ThemeText
+        BorderColor: =ThemeBorderStrong
+        BorderThickness: =1
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        RadiusTopLeft: =4
+        RadiusTopRight: =4
+        RadiusBottomLeft: =4
+        RadiusBottomRight: =4
+        OnSelect: =cmpAlertBanner.OnAction()
+
+# -----------------------------------------------------------------------------
+# cmpSectionCard - the panel every content block sits in. Header, optional action, body slot.
+# Used on the dashboard, the workspace tabs and the reports screen.
+# PROPERTIES  HeaderText(Text) SubText(Text) ActionLabel(Text) ShowAction(Boolean) OnAction(Behaviour)
+# -----------------------------------------------------------------------------
+cmpSectionCard As CanvasComponent:
+    Height: =300
+    Width: =600
+    Fill: =RGBA(0, 0, 0, 0)
+    CustomProperties:
+        HeaderText:
+            PropertyKind: Input
+            DisplayName: HeaderText
+            Description: Section title.
+            DataType: Text
+            Default: ="Section"
+        SubText:
+            PropertyKind: Input
+            DisplayName: SubText
+            Description: Optional supporting line under the title.
+            DataType: Text
+            Default: =""
+        ActionLabel:
+            PropertyKind: Input
+            DisplayName: ActionLabel
+            Description: Optional right-aligned action, e.g. "View all".
+            DataType: Text
+            Default: =""
+        ShowAction:
+            PropertyKind: Input
+            DisplayName: ShowAction
+            Description: Whether the action is shown. Bind to a permission formula.
+            DataType: Boolean
+            Default: =true
+        OnAction:
+            PropertyKind: Event
+            DisplayName: OnAction
+            Description: Runs when the header action is clicked.
+            ReturnType: None
+
+    recCard As rectangle:
+        X: =0
+        Y: =0
+        Height: =Parent.Height
+        Width: =Parent.Width
+        Fill: =ThemeSurface
+        BorderColor: =ThemeBorder
+        BorderThickness: =1
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+
+    lblCardHeader As label:
+        X: =ThemeSpace4
+        Y: =ThemeSpace3
+        Height: =22
+        Width: =Parent.Width - (ThemeSpace4 * 2) - 100
+        Text: =cmpSectionCard.HeaderText
+        Font: =ThemeFont
+        Size: =ThemeSizeHeading
+        FontWeight: =FontWeight.Semibold
+        Color: =ThemeText
+        PaddingLeft: =0
+
+    lblCardSub As label:
+        X: =ThemeSpace4
+        Y: =lblCardHeader.Y + lblCardHeader.Height - 2
+        Height: =If(Len(cmpSectionCard.SubText) = 0, 0, 16)
+        Width: =Parent.Width - (ThemeSpace4 * 2) - 100
+        Text: =cmpSectionCard.SubText
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =ThemeTextMuted
+        PaddingLeft: =0
+        Visible: =Len(cmpSectionCard.SubText) > 0
+
+    btnCardAction As button:
+        X: =Parent.Width - Self.Width - ThemeSpace4
+        Y: =ThemeSpace3
+        Height: =26
+        Width: =Len(cmpSectionCard.ActionLabel) * 7 + 20
+        Text: =cmpSectionCard.ActionLabel
+        Visible: =cmpSectionCard.ShowAction && Len(cmpSectionCard.ActionLabel) > 0
+        Fill: =RGBA(0, 0, 0, 0)
+        HoverFill: =ThemeAccentSoft
+        Color: =ThemeAccent
+        HoverColor: =ThemeAccentHover
+        BorderThickness: =0
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        FontWeight: =FontWeight.Semibold
+        OnSelect: =cmpSectionCard.OnAction()
+
+    recCardDivider As rectangle:
+        X: =0
+        Y: =lblCardSub.Y + lblCardSub.Height + ThemeSpace3
+        Width: =Parent.Width
+        Height: =1
+        Fill: =ThemeBorder
+
+# -----------------------------------------------------------------------------
+# cmpEmptyState - what a gallery shows when a filter returns nothing. An empty
+# table with no explanation is the most common way an internal portal loses trust.
+# PROPERTIES  Title(Text) Body(Text) ActionLabel(Text) OnAction(Behaviour)
+# -----------------------------------------------------------------------------
+cmpEmptyState As CanvasComponent:
+    Height: =180
+    Width: =400
+    Fill: =RGBA(0, 0, 0, 0)
+    CustomProperties:
+        Title:
+            PropertyKind: Input
+            DisplayName: Title
+            Description: Short headline, e.g. "No LCs match these filters".
+            DataType: Text
+            Default: ="Nothing to show"
+        Body:
+            PropertyKind: Input
+            DisplayName: Body
+            Description: One line telling the user what to do next.
+            DataType: Text
+            Default: =""
+        ActionLabel:
+            PropertyKind: Input
+            DisplayName: ActionLabel
+            Description: Optional recovery action, usually "Clear filters".
+            DataType: Text
+            Default: =""
+        OnAction:
+            PropertyKind: Event
+            DisplayName: OnAction
+            Description: Runs when the recovery action is clicked.
+            ReturnType: None
+
+    lblEmptyTitle As label:
+        X: =0
+        Y: =40
+        Width: =Parent.Width
+        Height: =26
+        Text: =cmpEmptyState.Title
+        Align: =Align.Center
+        Font: =ThemeFont
+        Size: =ThemeSizeHeading
+        FontWeight: =FontWeight.Semibold
+        Color: =ThemeTextSecondary
+
+    lblEmptyBody As label:
+        X: =ThemeSpace5
+        Y: =lblEmptyTitle.Y + lblEmptyTitle.Height
+        Width: =Parent.Width - (ThemeSpace5 * 2)
+        Height: =40
+        Text: =cmpEmptyState.Body
+        Align: =Align.Center
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        Color: =ThemeTextMuted
+
+    btnEmptyAction As button:
+        X: =(Parent.Width - Self.Width) / 2
+        Y: =lblEmptyBody.Y + lblEmptyBody.Height + ThemeSpace2
+        Height: =32
+        Width: =Len(cmpEmptyState.ActionLabel) * 7.5 + 32
+        Text: =cmpEmptyState.ActionLabel
+        Visible: =Len(cmpEmptyState.ActionLabel) > 0
+        Fill: =ThemeSurface
+        HoverFill: =ThemeAccentSoft
+        Color: =ThemeAccent
+        BorderColor: =ThemeBorderStrong
+        BorderThickness: =1
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        OnSelect: =cmpEmptyState.OnAction()
+
+# -----------------------------------------------------------------------------
+# cmpFieldRow - a label/value pair. The LC Details tab is built almost entirely
+# from these, which is what keeps 60 fields from turning into 60 hand-placed labels.
+# PROPERTIES  FieldLabel(Text) FieldValue(Text) Emphasis(Boolean) LabelWidth(Number)
+# -----------------------------------------------------------------------------
+cmpFieldRow As CanvasComponent:
+    Height: =32
+    Width: =360
+    Fill: =RGBA(0, 0, 0, 0)
+    CustomProperties:
+        FieldLabel:
+            PropertyKind: Input
+            DisplayName: FieldLabel
+            Description: The field caption.
+            DataType: Text
+            Default: ="Label"
+        FieldValue:
+            PropertyKind: Input
+            DisplayName: FieldValue
+            Description: The value, already formatted. Pass "-" for blanks.
+            DataType: Text
+            Default: ="-"
+        Emphasis:
+            PropertyKind: Input
+            DisplayName: Emphasis
+            Description: Bold the value. Use for amounts and dates that drive decisions.
+            DataType: Boolean
+            Default: =false
+        LabelWidth:
+            PropertyKind: Input
+            DisplayName: LabelWidth
+            Description: Width of the caption column.
+            DataType: Number
+            Default: =150
+
+    lblFieldCaption As label:
+        X: =0
+        Y: =0
+        Height: =Parent.Height
+        Width: =cmpFieldRow.LabelWidth
+        Text: =cmpFieldRow.FieldLabel
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        Color: =ThemeTextSecondary
+        VerticalAlign: =VerticalAlign.Middle
+        PaddingLeft: =0
+
+    lblFieldValue As label:
+        X: =cmpFieldRow.LabelWidth
+        Y: =0
+        Height: =Parent.Height
+        Width: =Parent.Width - cmpFieldRow.LabelWidth
+        Text: =If(Len(Trim(cmpFieldRow.FieldValue)) = 0, "-", cmpFieldRow.FieldValue)
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        FontWeight: =If(cmpFieldRow.Emphasis, FontWeight.Semibold, FontWeight.Normal)
+        Color: =If(Len(Trim(cmpFieldRow.FieldValue)) = 0, ThemeTextMuted, ThemeText)
+        VerticalAlign: =VerticalAlign.Middle
+        PaddingLeft: =0
+
+    recFieldRule As rectangle:
+        X: =0
+        Y: =Parent.Height - 1
+        Width: =Parent.Width
+        Height: =1
+        Fill: =ThemeBorder
+
+# -----------------------------------------------------------------------------
+# cmpNavRail - the persistent left navigation. Present on every screen, always in the
+# same place, always showing where the user is. Collapses to icons below 900px.
+#
+# It cannot call Navigate() itself (components have no navigation scope), so it writes
+# the requested key to gblNavSection and raises OnNavigate. Each screen implements
+# OnNavigate with a single Switch - see scrDashboard for the canonical handler.
+#
+# PROPERTIES  ActiveKey(Text) UserName(Text) RoleLabel(Text)
+#             BadgePendingAction(Number) BadgeDiscrepancies(Number) BadgeTasks(Number)
+#             OnNavigate(Behaviour)
+# -----------------------------------------------------------------------------
+cmpNavRail As CanvasComponent:
+    Height: =768
+    Width: =232
+    Fill: =RGBA(0, 0, 0, 0)
+    CustomProperties:
+        ActiveKey:
+            PropertyKind: Input
+            DisplayName: ActiveKey
+            Description: Key of the section currently open, e.g. HOME, LCS, INVOICES.
+            DataType: Text
+            Default: ="HOME"
+        UserName:
+            PropertyKind: Input
+            DisplayName: UserName
+            Description: Signed-in user's display name.
+            DataType: Text
+            Default: =""
+        RoleLabel:
+            PropertyKind: Input
+            DisplayName: RoleLabel
+            Description: Friendly role name shown under the user's name.
+            DataType: Text
+            Default: =""
+        BadgePendingAction:
+            PropertyKind: Input
+            DisplayName: BadgePendingAction
+            Description: Count badge on EXPORT LCs.
+            DataType: Number
+            Default: =0
+        BadgeDiscrepancies:
+            PropertyKind: Input
+            DisplayName: BadgeDiscrepancies
+            Description: Count badge on DISCREPANCIES.
+            DataType: Number
+            Default: =0
+        BadgeTasks:
+            PropertyKind: Input
+            DisplayName: BadgeTasks
+            Description: Count badge on TASKS.
+            DataType: Number
+            Default: =0
+        OnNavigate:
+            PropertyKind: Event
+            DisplayName: OnNavigate
+            Description: Raised after gblNavSection is set. The host screen performs the Navigate.
+            ReturnType: None
+
+    recRail As rectangle:
+        X: =0
+        Y: =0
+        Width: =Parent.Width
+        Height: =Parent.Height
+        Fill: =ThemeRailBg
+
+    lblBrand As label:
+        X: =18
+        Y: =16
+        Width: =Parent.Width - 26
+        Height: =24
+        Text: =If(IsCompact, "LC", PortalName)
+        Color: =ThemeTextInverse
+        Font: =ThemeFont
+        Size: =If(IsCompact, ThemeSizeBody, ThemeSizeTitle)
+        FontWeight: =FontWeight.Semibold
+        PaddingLeft: =0
+
+    lblBrandSub As label:
+        X: =18
+        Y: =40
+        Width: =Parent.Width - 26
+        Height: =16
+        Text: ="Trade Finance Operations"
+        Color: =ThemeRailAccent
+        Font: =ThemeFont
+        Size: =ThemeSizeMicro
+        PaddingLeft: =0
+        Visible: =!IsCompact
+
+    galNav As gallery:
+        X: =0
+        Y: =74
+        Width: =Parent.Width
+        Height: =Parent.Height - 74 - 78
+        TemplateSize: =40
+        TemplatePadding: =0
+        ShowScrollbar: =false
+        DelayItemLoading: =false
+        # Navigation is data, not eleven hand-placed buttons. Adding a section is one row.
+        # Roles: "" = everyone, otherwise the section is hidden unless the role matches.
+        Items: |
+            =Filter(
+                Table(
+                    { Key: "HOME",       Label: "Home",           Icon: Icon.Home,       Badge: 0,                              AdminOnly: false },
+                    { Key: "LCS",        Label: "Export LCs",     Icon: Icon.Documents,  Badge: cmpNavRail.BadgePendingAction,  AdminOnly: false },
+                    { Key: "INVOICES",   Label: "Invoices",       Icon: Icon.Currency,   Badge: 0,                              AdminOnly: false },
+                    { Key: "SHIPMENTS",  Label: "Shipments",      Icon: Icon.Trending,   Badge: 0,                              AdminOnly: false },
+                    { Key: "PRESENT",    Label: "Presentations",  Icon: Icon.Send,       Badge: 0,                              AdminOnly: false },
+                    { Key: "DOCS",       Label: "Documents",      Icon: Icon.Folder,     Badge: 0,                              AdminOnly: false },
+                    { Key: "DISCREP",    Label: "Discrepancies",  Icon: Icon.Warning,    Badge: cmpNavRail.BadgeDiscrepancies,  AdminOnly: false },
+                    { Key: "PROCEEDS",   Label: "Proceeds",       Icon: Icon.Money,      Badge: 0,                              AdminOnly: false },
+                    { Key: "CORRESP",    Label: "Correspondence", Icon: Icon.Mail,       Badge: 0,                              AdminOnly: false },
+                    { Key: "TASKS",      Label: "Tasks",          Icon: Icon.CheckBadge, Badge: cmpNavRail.BadgeTasks,          AdminOnly: false },
+                    { Key: "REPORTS",    Label: "Reports",        Icon: Icon.BarChart,   Badge: 0,                              AdminOnly: false },
+                    { Key: "ADMIN",      Label: "Administration", Icon: Icon.Settings,   Badge: 0,                              AdminOnly: true }
+                ),
+                !AdminOnly || IsAdmin
+            )
+
+        recNavActive As rectangle:
+            X: =0
+            Y: =0
+            Width: =3
+            Height: =Parent.TemplateHeight
+            Fill: =ThemeRailAccent
+            Visible: =ThisItem.Key = cmpNavRail.ActiveKey
+
+        btnNav As button:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight
+            Text: =""
+            Fill: |
+                =If(ThisItem.Key = cmpNavRail.ActiveKey, ThemeRailBgActive, RGBA(0, 0, 0, 0))
+            HoverFill: =ThemeRailBgHover
+            PressedFill: =ThemeRailBgActive
+            BorderThickness: =0
+            TabIndex: =0
+            AccessibleLabel: =ThisItem.Label
+            OnSelect: |
+                =Set(gblNavSection, ThisItem.Key);
+                cmpNavRail.OnNavigate()
+
+        icoNav As icon:
+            Icon: =ThisItem.Icon
+            X: =If(IsCompact, (Parent.TemplateWidth - 18) / 2, 18)
+            Y: =11
+            Width: =18
+            Height: =18
+            Color: |
+                =If(ThisItem.Key = cmpNavRail.ActiveKey, ThemeRailTextActive, ThemeRailText)
+            DisplayMode: =DisplayMode.View
+
+        lblNav As label:
+            X: =48
+            Y: =0
+            Width: =Parent.TemplateWidth - 48 - 34
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.Label
+            Color: |
+                =If(ThisItem.Key = cmpNavRail.ActiveKey, ThemeRailTextActive, ThemeRailText)
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: |
+                =If(ThisItem.Key = cmpNavRail.ActiveKey, FontWeight.Semibold, FontWeight.Normal)
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+            Visible: =!IsCompact
+            DisplayMode: =DisplayMode.View
+
+        recNavBadge As rectangle:
+            X: =Parent.TemplateWidth - 40
+            Y: =12
+            Width: =Max(20, Len(Text(ThisItem.Badge)) * 8 + 10)
+            Height: =16
+            Fill: =ThemeDanger
+            RadiusTopLeft: =8
+            RadiusTopRight: =8
+            RadiusBottomLeft: =8
+            RadiusBottomRight: =8
+            Visible: =ThisItem.Badge > 0 && !IsCompact
+            DisplayMode: =DisplayMode.View
+
+        lblNavBadge As label:
+            X: =recNavBadge.X
+            Y: =recNavBadge.Y
+            Width: =recNavBadge.Width
+            Height: =recNavBadge.Height
+            Text: =If(ThisItem.Badge > 99, "99+", Text(ThisItem.Badge))
+            Color: =ThemeTextInverse
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            FontWeight: =FontWeight.Semibold
+            Align: =Align.Center
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+            Visible: =recNavBadge.Visible
+            DisplayMode: =DisplayMode.View
+
+    recRailFooter As rectangle:
+        X: =0
+        Y: =Parent.Height - 70
+        Width: =Parent.Width
+        Height: =1
+        Fill: =ThemeRailBgHover
+
+    icoUser As icon:
+        Icon: =Icon.Person
+        X: =If(IsCompact, (Parent.Width - 18) / 2, 18)
+        Y: =Parent.Height - 52
+        Width: =18
+        Height: =18
+        Color: =ThemeRailAccent
+
+    lblUser As label:
+        X: =46
+        Y: =Parent.Height - 58
+        Width: =Parent.Width - 54
+        Height: =18
+        Text: =cmpNavRail.UserName
+        Color: =ThemeTextInverse
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        FontWeight: =FontWeight.Semibold
+        PaddingLeft: =0
+        Visible: =!IsCompact
+
+    lblUserRole As label:
+        X: =46
+        Y: =Parent.Height - 41
+        Width: =Parent.Width - 54
+        Height: =16
+        Text: =cmpNavRail.RoleLabel
+        Color: =ThemeRailText
+        Font: =ThemeFont
+        Size: =ThemeSizeMicro
+        PaddingLeft: =0
+        Visible: =!IsCompact
+
+# -----------------------------------------------------------------------------
+# cmpTopBar - page title, breadcrumb, global search and the primary page action.
+# The breadcrumb is what stops a user getting lost four levels into an LC workspace.
+#
+# PROPERTIES  TitleText(Text) Breadcrumb(Text) SearchText(Text) ShowSearch(Boolean)
+#             PrimaryLabel(Text) ShowPrimary(Boolean)
+#             OnSearchChange(Behaviour) OnPrimary(Behaviour) OnBack(Behaviour) ShowBack(Boolean)
+# Output: SearchValue(Text) - read by the host screen; written by txtSearch below.
+# -----------------------------------------------------------------------------
+cmpTopBar As CanvasComponent:
+    Height: =56
+    Width: =1000
+    Fill: =RGBA(0, 0, 0, 0)
+    CustomProperties:
+        TitleText:
+            PropertyKind: Input
+            DisplayName: TitleText
+            Description: Page title.
+            DataType: Text
+            Default: ="Home"
+        Breadcrumb:
+            PropertyKind: Input
+            DisplayName: Breadcrumb
+            Description: Context line, e.g. "Export LCs / LC-2026-0015 / Presentations".
+            DataType: Text
+            Default: =""
+        ShowSearch:
+            PropertyKind: Input
+            DisplayName: ShowSearch
+            Description: Whether the global search box is shown.
+            DataType: Boolean
+            Default: =true
+        PrimaryLabel:
+            PropertyKind: Input
+            DisplayName: PrimaryLabel
+            Description: Primary action button caption, e.g. "Register LC".
+            DataType: Text
+            Default: =""
+        ShowPrimary:
+            PropertyKind: Input
+            DisplayName: ShowPrimary
+            Description: Whether the primary action is shown. Bind to a permission formula.
+            DataType: Boolean
+            Default: =false
+        ShowBack:
+            PropertyKind: Input
+            DisplayName: ShowBack
+            Description: Whether the back chevron is shown.
+            DataType: Boolean
+            Default: =false
+        OnPrimary:
+            PropertyKind: Event
+            DisplayName: OnPrimary
+            Description: Runs when the primary action is clicked.
+            ReturnType: None
+        OnBack:
+            PropertyKind: Event
+            DisplayName: OnBack
+            Description: Runs when the back chevron is clicked.
+            ReturnType: None
+        OnSearchSubmit:
+            PropertyKind: Event
+            DisplayName: OnSearchSubmit
+            Description: Runs when the user presses Enter in global search. gblGlobalSearch holds the term.
+            ReturnType: None
+
+    icoBack As icon:
+        Icon: =Icon.ChevronLeft
+        X: =0
+        Y: =18
+        Width: =20
+        Height: =20
+        Color: =ThemeTextSecondary
+        Visible: =cmpTopBar.ShowBack
+        OnSelect: =cmpTopBar.OnBack()
+        TabIndex: =0
+        AccessibleLabel: ="Back"
+
+    lblTitle As label:
+        X: =If(cmpTopBar.ShowBack, 28, 0)
+        Y: =6
+        Width: =Parent.Width - Self.X - 480
+        Height: =26
+        Text: =cmpTopBar.TitleText
+        Font: =ThemeFont
+        Size: =ThemeSizeTitle
+        FontWeight: =FontWeight.Semibold
+        Color: =ThemeText
+        PaddingLeft: =0
+
+    lblBreadcrumb As label:
+        X: =lblTitle.X
+        Y: =32
+        Width: =Parent.Width - Self.X - 480
+        Height: =16
+        Text: =cmpTopBar.Breadcrumb
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =ThemeTextMuted
+        PaddingLeft: =0
+        Visible: =Len(cmpTopBar.Breadcrumb) > 0
+
+    txtGlobalSearch As text:
+        X: =Parent.Width - 300 - If(cmpTopBar.ShowPrimary, 150, 0)
+        Y: =12
+        Width: =290
+        Height: =32
+        HintText: ="Search LC, customer, invoice, presentation..."
+        Default: =""
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        BorderColor: =ThemeBorderStrong
+        FocusedBorderColor: =ThemeAccent
+        BorderThickness: =1
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        Visible: =cmpTopBar.ShowSearch
+        # Search runs on Enter, not on every keystroke: one delegated query per intent,
+        # not one per character typed.
+        OnChange: =Set(gblGlobalSearch, Self.Value)
+
+    btnSearchGo As button:
+        X: =txtGlobalSearch.X + txtGlobalSearch.Width - 30
+        Y: =txtGlobalSearch.Y + 4
+        Width: =24
+        Height: =24
+        Text: =""
+        Fill: =RGBA(0, 0, 0, 0)
+        HoverFill: =ThemeSurfaceHover
+        BorderThickness: =0
+        Visible: =cmpTopBar.ShowSearch
+        OnSelect: |
+            =Set(gblGlobalSearch, txtGlobalSearch.Value);
+            cmpTopBar.OnSearchSubmit()
+        AccessibleLabel: ="Run search"
+
+    icoSearch As icon:
+        Icon: =Icon.Search
+        X: =btnSearchGo.X + 4
+        Y: =btnSearchGo.Y + 4
+        Width: =16
+        Height: =16
+        Color: =ThemeTextMuted
+        Visible: =cmpTopBar.ShowSearch
+        DisplayMode: =DisplayMode.View
+
+    btnPrimary As button:
+        X: =Parent.Width - 140
+        Y: =12
+        Width: =140
+        Height: =32
+        Text: =cmpTopBar.PrimaryLabel
+        Visible: =cmpTopBar.ShowPrimary && Len(cmpTopBar.PrimaryLabel) > 0
+        Fill: =ThemeAccent
+        HoverFill: =ThemeAccentHover
+        Color: =ThemeTextInverse
+        BorderThickness: =0
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        FontWeight: =FontWeight.Semibold
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        OnSelect: =cmpTopBar.OnPrimary()
+
+    recTopRule As rectangle:
+        X: =0
+        Y: =Parent.Height - 1
+        Width: =Parent.Width
+        Height: =1
+        Fill: =ThemeBorder

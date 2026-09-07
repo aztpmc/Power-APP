@@ -1,0 +1,61 @@
+﻿Title,LCNumber,OurReference,CustomerName,CustomerCode,CurrencyCode,InvoiceAmount,PresentationDate,InvoiceStatus,CollectionDate,DueDate,TrackingNumber,InvoiceNotes,NextAction,SourceFile,SourceRow,SourceBlock
+91187251,26/BMLCU/40464,2026/ILC/3378,Al Hashar Pharmacy Llc,2000006,USD,93458.11,,Accepted,,2026-07-30,,,Add collection date,LC Master Export 2026.xlsx,3,1
+91189924,26/BMLCU/40579,2026/ILC/3381,Al Hashar Pharmacy Llc,2000006,USD,57415.67,,Accepted,,2026-08-04,,,Add collection date,LC Master Export 2026.xlsx,4,1
+91186097,26/BMLCU/40579,2026/ILC/3381,Al Hashar Pharmacy Llc,2000006,USD,155195.44,,Accepted,,2026-08-04,,,Add collection date,LC Master Export 2026.xlsx,4,2
+91189919,26/BMLCU/40579,2026/ILC/3381,Al Hashar Pharmacy Llc,2000006,USD,1993.6,,Accepted,,2026-08-04,,,Add collection date,LC Master Export 2026.xlsx,4,3
+91189901,26/BMLCU/40579,2026/ILC/3381,Al Hashar Pharmacy Llc,2000006,USD,18008.96,,Issued,,,,Not yet accepted,Enter presentation date,LC Master Export 2026.xlsx,4,4
+91195705,26/BMLCU/40801,2026/ILC/3388,Al Hashar Pharmacy Llc,2000006,USD,355645.85,,Accepted,,2026-08-25,,,Add collection date,LC Master Export 2026.xlsx,5,1
+91196156,26/BMLCU/40801,2026/ILC/3388,Al Hashar Pharmacy Llc,2000006,USD,59100.0,,Accepted,2026-08-25,2026-08-25,,,Complete,LC Master Export 2026.xlsx,5,2
+91197426,26/BMLCU/40829,2026/ILC/3393,Al Hashar Pharmacy Llc,2000006,USD,172096.92,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,6,1
+91200826,OLCD001260139,TF2605000007JEDX,Al Hikma Fzco Iraq,2000018,USD,650451.0,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,7,1
+91206415,OLCD001260139,TF2605000007JEDX,Al Hikma Fzco Iraq,2000018,USD,100351.3,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,7,2
+91199933,777LC09260770017,ELC26BH00427,Samt For Medical Supplies,2000012,USD,200806.15,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,8,1
+91206417,OLCD001260145,TF2608300001JEDX,Al Hikma Fzco Iraq,2000018,USD,374620.58,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,9,1
+91213842,OLCD001260145,TF2608300001JEDX,Al Hikma Fzco Iraq,2000018,USD,286840.8,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,9,2
+91213847,OLCD001260145,TF2608300001JEDX,Al Hikma Fzco Iraq,2000018,USD,39033.9,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,9,3
+91206606,TF2606933771,EXWC020935,Zenith Pharma,2000022,USD,438144.0,,Accepted,,2026-10-09,,,Add collection date,LC Master Export 2026.xlsx,10,1
+91206608,TF2606933771,EXWC020935,Zenith Pharma,2000022,USD,310587.01,,Accepted,,2026-10-09,,,Add collection date,LC Master Export 2026.xlsx,10,2
+91206609,TF2606933771,EXWC020935,Zenith Pharma,2000022,USD,37391.84,,Accepted,,2026-10-09,,,Add collection date,LC Master Export 2026.xlsx,10,3
+91213275,TF2606933771,EXWC020935,Zenith Pharma,2000022,USD,84657.9,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,10,4
+91213277,TF2606933771,EXWC020935,Zenith Pharma,2000022,USD,592683.1,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,10,5
+91206748,AB1000ILC0074126,ELC/2026/00441QA,Lanamed Pharmaceuticals Import,2001209,USD,46729.0,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,11,1
+91205843,GDAIBDIMP0083/26,ELC/2026/00478QA,Kare Pharmaceutical Plc,2001332,USD,389958.34,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,12,1
+91214870,GDAIBDIMP0083/26,ELC/2026/00478QA,Kare Pharmaceutical Plc,2001332,USD,85423.4,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,12,2
+91205473,26/BMLCU/41157,2026/ILC/3407,Al Hashar Pharmacy Llc,2000006,USD,0.0,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,13,1
+91213468,26/BMLCU/41321,2026/ILC/3417,Al Hashar Pharmacy Llc,2000006,USD,0.0,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,14,1
+91202373,26/BMLCU/41031,2026/ILC/3405,Al Hashar Pharmacy Llc,2000006,USD,0.0,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,15,1
+91202528,26/BMLCU/41031,2026/ILC/3405,Al Hashar Pharmacy Llc,2000006,USD,0.0,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,15,2
+91219417,OLCD001260151,TF2612500004JEDX,Al Hikma Fzco Iraq,2000018,USD,128390.0,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,16,1
+91219491,OLCD001260151,TF2612500004JEDX,Al Hikma Fzco Iraq,2000018,USD,47539.5,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,16,2
+91219571,OLCD001260151,TF2612500004JEDX,Al Hikma Fzco Iraq,2000018,USD,37818.2,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,16,3
+91226392,OLCD001260151,TF2612500004JEDX,Al Hikma Fzco Iraq,2000018,USD,341377.25,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,16,4
+91226395,OLCD001260151,TF2612500004JEDX,Al Hikma Fzco Iraq,2000018,USD,215275.4,,Issued,,,,,Enter presentation date,LC Master Export 2026.xlsx,16,5
+91219680,OLCT260054,2026/ILC/3432,Al Hashar Pharmacy Llc,2000006,USD,105721.0,,Issued,,2026-10-06,,,Enter presentation date,LC Master Export 2026.xlsx,17,1
+91219652,OLCT260054,2026/ILC/3432,Al Hashar Pharmacy Llc,2000006,USD,657.72,,Issued,,2026-10-06,,,Enter presentation date,LC Master Export 2026.xlsx,17,2
+91219676,OLCT260054,2026/ILC/3432,Al Hashar Pharmacy Llc,2000006,USD,33645.72,,Issued,,2026-10-06,,,Enter presentation date,LC Master Export 2026.xlsx,17,3
+91219677,OLCT260054,2026/ILC/3432,Al Hashar Pharmacy Llc,2000006,USD,11803.26,,Issued,,2026-10-06,,,Enter presentation date,LC Master Export 2026.xlsx,17,4
+91219678,OLCT260054,2026/ILC/3432,Al Hashar Pharmacy Llc,2000006,USD,29952.18,,Issued,,2026-10-05,,,Enter presentation date,LC Master Export 2026.xlsx,17,5
+91219681,OLCT260054,2026/ILC/3432,Al Hashar Pharmacy Llc,2000006,USD,24066.72,,Issued,,2026-10-06,,,Enter presentation date,LC Master Export 2026.xlsx,17,6
+91219690,OLCT260054,2026/ILC/3432,Al Hashar Pharmacy Llc,2000006,USD,11078.72,,Issued,,2026-10-06,,,Enter presentation date,LC Master Export 2026.xlsx,17,7
+91219898,OLCT260054,2026/ILC/3432,Al Hashar Pharmacy Llc,2000006,USD,218152.89,,Issued,,2026-10-06,,,Enter presentation date,LC Master Export 2026.xlsx,17,8
+91220291,AB1000ILC0132126,ELCCB26001530DPR001,Tracon Trading Plc,2001210,USD,45607.32,,Issued,,,,,Add collection date,LC Master Export 2026.xlsx,19,1
+91220476,AB1000ILC0132126,ELCCB26001530DPR001,Tracon Trading Plc,2001210,USD,394993.25,,Issued,,,,,Add collection date,LC Master Export 2026.xlsx,19,2
+91228018,TF2606933771,EXWC020935,Zenith Pharma,2000022,USD,555970.78,,Pending,,2026-06-25,,,Enter presentation date,LC Export.xlsx,22,0
+91228020,TF2606933771,EXWC020935,Zenith Pharma,2000022,USD,700812.44,,Pending,,2026-06-25,,,Enter presentation date,LC Export.xlsx,23,0
+91228458,TF2606933771,EXWC020935,Zenith Pharma,2000022,USD,161695.12,,Pending,,2026-06-25,,,Enter presentation date,LC Export.xlsx,24,0
+91228981,OLCD001260151,TF2612500004JEDX,Al Hikma Fzco Iraq,2000018,USD,28988.08,,Pending,,2026-06-28,,,Enter presentation date,LC Export.xlsx,36,0
+91228956,,ELCCB26001530POD001,Tracon Trading Plc,,USD,107304.56,,Pending,,2026-06-24,,,Enter presentation date,LC Export.xlsx,48,0
+91227418,ILC310/159/26,ELC26BH00858,El Hakeem For Importing Pharmaceutical,2001514,USD,148874.85,,Pending,,2026-06-21,,,Enter presentation date,LC Export.xlsx,49,0
+91215163,777LC09261550003,ELC26BH00911,Samt For Medical Supplies,2000012,USD,591628.64,,Pending,,2026-06-07,,,Enter presentation date,LC Export.xlsx,50,0
+91228106,777LC09261550003,ELC26BH00911,Samt For Medical Supplies,2000012,USD,161512.23,,Pending,,2026-06-23,,,Enter presentation date,LC Export.xlsx,51,0
+91234848,,AB1000ILC0193026,Lanamed Pharmaceuticals Import,,USD,31491.87,,Pending,,2026-07-28,,,Enter presentation date,LC Export.xlsx,52,0
+91235049,,EXWC021649,Samt For Medical Supplies,,USD,299996.18,,Pending,,2026-07-26,,,Enter presentation date,LC Export.xlsx,53,0
+91233757,,ELC/2026/00832QA,Kare Pharmaceutical Plc,,USD,209276.4,,Pending,,2026-07-19,,,Enter presentation date,LC Export.xlsx,54,0
+91235061,,EXWC021916-ADV001,Zenith Pharma,,USD,580964.27,,Pending,,2026-08-16,,,Enter presentation date,LC Export.xlsx,55,0
+91235062,,EXWC021916-ADV001,Zenith Pharma,,USD,87185.66,,Pending,,2026-08-16,,,Enter presentation date,LC Export.xlsx,56,0
+91237519,,EXWC021916-ADV001,Zenith Pharma,,USD,99846.88,,Pending,,2028-08-16,,,Enter presentation date,LC Export.xlsx,57,0
+91238969,,ELC/2026/00832QA,Kare Pharmaceutical Plc,,USD,50528.63,,Pending,,2026-08-19,,,Enter presentation date,LC Export.xlsx,58,0
+91238356,,LCI202600286,Al Hikma Fzco Iraq,,USD,178547.65,,Pending,,2026-08-18,,,Enter presentation date,LC Export.xlsx,59,0
+91238372,,LCI202600286,Al Hikma Fzco Iraq,,USD,22315.52,,Pending,,2026-08-18,,,Enter presentation date,LC Export.xlsx,60,0
+91238375,,LCI202600286,Al Hikma Fzco Iraq,,USD,366574.1,,Pending,,2026-08-18,,,Enter presentation date,LC Export.xlsx,61,0
+91238790,,LCI202600286,Al Hikma Fzco Iraq,,USD,639205.89,,Pending,,2026-08-18,,,Enter presentation date,LC Export.xlsx,62,0

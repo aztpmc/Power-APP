@@ -1,0 +1,27 @@
+﻿Severity,SourceFile,SourceRow,TargetList,RecordKey,Rule,Message
+WARNING,LC Export.xlsx,68,11_Customers,Elkendi Pharmaceutical Mfg Co.,DUP_CODE_CONFLICT,'Elkendi Pharmaceutical Mfg Co.' appears with codes 2000024 and 3555558. Kept 2000024; confirm which is correct before commit.
+WARNING,LC Export.xlsx,90,11_Customers,Sas Company,DUP_CODE_CONFLICT,'Sas Company' appears with codes 2000036 and 3555559. Kept 2000036; confirm which is correct before commit.
+WARNING,LC Export.xlsx,97,11_Customers,Injaz Scientific Bureau,DUP_CODE_CONFLICT,'Injaz Scientific Bureau' appears with codes 2001349 and 3000170. Kept 2001349; confirm which is correct before commit.
+WARNING,LC Export.xlsx,110,11_Customers,Munir Sukhtian Co. Ltd,DUP_CODE_CONFLICT,'Munir Sukhtian Co. Ltd' appears with codes 3555557 and 2000007. Kept 3555557; confirm which is correct before commit.
+INFO,banks,,12_Banks,,MERGE,28 unique banks merged from the four legacy columns.
+REJECT,LC Master Export 2026.xlsx,13,03_Invoices,26/BMLCU/41157/91205473,INVOICE_AMOUNT_REQUIRED,Invoice value is missing or non-numeric.
+REJECT,LC Master Export 2026.xlsx,14,03_Invoices,26/BMLCU/41321/91213468,INVOICE_AMOUNT_REQUIRED,Invoice value is missing or non-numeric.
+REJECT,LC Master Export 2026.xlsx,15,03_Invoices,26/BMLCU/41031/91202373,INVOICE_AMOUNT_REQUIRED,Invoice value is missing or non-numeric.
+REJECT,LC Master Export 2026.xlsx,15,03_Invoices,26/BMLCU/41031/91202528,INVOICE_AMOUNT_REQUIRED,Invoice value is missing or non-numeric.
+WARNING,LC Master Export 2026.xlsx,18,01_ExportLCs,AWAELCU260068,ISSUING_BANK_MISSING,No issuing bank recorded.
+INFO,LC Master Export 2026.xlsx,23,01_ExportLCs,,SKIP_TOTAL_ROW,Row has an amount but no customer - treated as a spreadsheet total row and skipped.
+WARNING,LC Export.xlsx,35,03_Invoices,91226392,AMOUNT_CONFLICT,"Invoice 91226392 is 341,377.25 in the LC Tracker but 308,687.25 in the Invoice Process Tracker. LC Tracker value kept."
+WARNING,LC Export.xlsx,48,03_Invoices,91228956,ORPHAN_INVOICE,"Invoice 91228956 references LC 'ELCCB26001530POD001', which is not in the LC Tracker. Staged without an LC link - assign it before commit or it will be rejected."
+WARNING,LC Export.xlsx,52,03_Invoices,91234848,ORPHAN_INVOICE,"Invoice 91234848 references LC 'AB1000ILC0193026', which is not in the LC Tracker. Staged without an LC link - assign it before commit or it will be rejected."
+WARNING,LC Export.xlsx,53,03_Invoices,91235049,ORPHAN_INVOICE,"Invoice 91235049 references LC 'EXWC021649', which is not in the LC Tracker. Staged without an LC link - assign it before commit or it will be rejected."
+WARNING,LC Export.xlsx,54,03_Invoices,91233757,ORPHAN_INVOICE,"Invoice 91233757 references LC 'ELC/2026/00832QA', which is not in the LC Tracker. Staged without an LC link - assign it before commit or it will be rejected."
+WARNING,LC Export.xlsx,55,03_Invoices,91235061,ORPHAN_INVOICE,"Invoice 91235061 references LC 'EXWC021916-ADV001', which is not in the LC Tracker. Staged without an LC link - assign it before commit or it will be rejected."
+WARNING,LC Export.xlsx,56,03_Invoices,91235062,ORPHAN_INVOICE,"Invoice 91235062 references LC 'EXWC021916-ADV001', which is not in the LC Tracker. Staged without an LC link - assign it before commit or it will be rejected."
+WARNING,LC Export.xlsx,57,03_Invoices,91237519,ORPHAN_INVOICE,"Invoice 91237519 references LC 'EXWC021916-ADV001', which is not in the LC Tracker. Staged without an LC link - assign it before commit or it will be rejected."
+WARNING,LC Export.xlsx,58,03_Invoices,91238969,ORPHAN_INVOICE,"Invoice 91238969 references LC 'ELC/2026/00832QA', which is not in the LC Tracker. Staged without an LC link - assign it before commit or it will be rejected."
+WARNING,LC Export.xlsx,59,03_Invoices,91238356,ORPHAN_INVOICE,"Invoice 91238356 references LC 'LCI202600286', which is not in the LC Tracker. Staged without an LC link - assign it before commit or it will be rejected."
+WARNING,LC Export.xlsx,60,03_Invoices,91238372,ORPHAN_INVOICE,"Invoice 91238372 references LC 'LCI202600286', which is not in the LC Tracker. Staged without an LC link - assign it before commit or it will be rejected."
+WARNING,LC Export.xlsx,61,03_Invoices,91238375,ORPHAN_INVOICE,"Invoice 91238375 references LC 'LCI202600286', which is not in the LC Tracker. Staged without an LC link - assign it before commit or it will be rejected."
+WARNING,LC Export.xlsx,62,03_Invoices,91238790,ORPHAN_INVOICE,"Invoice 91238790 references LC 'LCI202600286', which is not in the LC Tracker. Staged without an LC link - assign it before commit or it will be rejected."
+INFO,Invoice Process Tracker,,03_Invoices,,MERGE,41 invoice(s) enriched and 19 additional invoice(s) found in the Invoice Process Tracker sheet that are absent from the LC Tracker blocks.
+WARNING,LC Master Export 2026.xlsx,16,01_ExportLCs,OLCD001260151,OVERDRAWN,"Invoices total 799,388.43 against an LC of 770,487.61 (over by 28,900.82). Check for a missing amendment."

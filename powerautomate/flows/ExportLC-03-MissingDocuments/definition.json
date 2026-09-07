@@ -1,0 +1,253 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    },
+    "SiteUrl": {
+      "defaultValue": "https://CONTOSO.sharepoint.com/sites/ExportLCPortal",
+      "type": "String",
+      "metadata": {
+        "description": "Portal site collection URL. Set before enabling."
+      }
+    }
+  },
+  "triggers": {
+    "Daily": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "timeZone": "Arabian Standard Time",
+        "schedule": {
+          "hours": [
+            "8"
+          ],
+          "minutes": [
+            0
+          ]
+        }
+      }
+    }
+  },
+  "actions": {
+    "Get_cadence": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "18_WorkflowConfig",
+          "$filter": "Title eq 'MissingDocumentReminderDays'",
+          "$top": 1
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      }
+    },
+    "Get_LCs_with_missing_docs": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "01_ExportLCs",
+          "$filter": "IsClosed eq 0 and MissingDocumentCount gt 0 and LCStatus ne 'Draft'",
+          "$top": 500
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      },
+      "runAfter": {
+        "Get_cadence": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Apply_to_each_LC": {
+      "type": "Foreach",
+      "foreach": "@body('Get_LCs_with_missing_docs')?['value']",
+      "runAfter": {
+        "Get_LCs_with_missing_docs": [
+          "Succeeded"
+        ]
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "repetitions": 8
+        }
+      },
+      "actions": {
+        "Cadence_bucket": {
+          "type": "Compose",
+          "inputs": "@{div(int(formatDateTime(utcNow(),'yyyyMMdd')), int(coalesce(first(body('Get_cadence')?['value'])?['ConfigValue'],'7')))}",
+          "metadata": {
+            "comment": "Turns the cadence into part of the idempotency key, so the chase repeats every N days instead of daily or once only."
+          }
+        },
+        "Notification_key": {
+          "type": "Compose",
+          "inputs": "@{concat('ExportLC-03-MissingDocuments:', items('Apply_to_each_LC')?['LCNumber'], ':', outputs('Cadence_bucket'))}",
+          "runAfter": {
+            "Cadence_bucket": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Check_already_sent": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "26_NotificationLog",
+              "$filter": "Title eq '@{outputs('Notification_key')}'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Notification_key": [
+              "Succeeded"
+            ]
+          }
+        },
+        "If_not_sent": {
+          "type": "If",
+          "expression": {
+            "equals": [
+              "@length(body('Check_already_sent')?['value'])",
+              0
+            ]
+          },
+          "runAfter": {
+            "Check_already_sent": [
+              "Succeeded"
+            ]
+          },
+          "actions": {
+            "Get_missing_lines": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "GetItems",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('SiteUrl')",
+                  "table": "20_LCDocumentChecklist",
+                  "$filter": "LCItemId eq @{items('Apply_to_each_LC')?['ID']} and IsRequired eq 1 and IsReceived eq 0",
+                  "$top": 100
+                },
+                "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+              },
+              "runtimeConfiguration": {
+                "paginationPolicy": {
+                  "minimumItemCount": 5000
+                }
+              }
+            },
+            "Build_list_html": {
+              "type": "Compose",
+              "inputs": "@{join(select(body('Get_missing_lines')?['value'], concat('<li>', item()?['DocumentTypeName'], ' - ', string(item()?['OriginalsRequired']), ' original(s)</li>')), '')}",
+              "runAfter": {
+                "Get_missing_lines": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Send_chase": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_office365",
+                  "operationId": "SendEmailV2",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                },
+                "parameters": {
+                  "emailMessage/To": "@{coalesce(items('Apply_to_each_LC')?['ResponsibleOfficerEmail'], '')}",
+                  "emailMessage/Subject": "@{items('Apply_to_each_LC')?['MissingDocumentCount']} required document(s) missing on LC @{items('Apply_to_each_LC')?['LCNumber']}",
+                  "emailMessage/Body": "<p>The following required documents have not been received for LC <strong>@{items('Apply_to_each_LC')?['LCNumber']}</strong> (@{items('Apply_to_each_LC')?['CustomerName']}):</p><ul>@{outputs('Build_list_html')}</ul><p>Latest shipment date: @{formatDateTime(items('Apply_to_each_LC')?['LatestShipmentDate'],'dd MMM yyyy')}<br/>Expiry: @{formatDateTime(items('Apply_to_each_LC')?['ExpiryDate'],'dd MMM yyyy')}</p><p>Documents cannot be presented until the set is complete.</p>",
+                  "emailMessage/Importance": "Normal"
+                },
+                "authentication": "@parameters('$connections')['shared_office365']['authentication']"
+              },
+              "runAfter": {
+                "Build_list_html": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Log_notification": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PostItem",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('SiteUrl')",
+                  "table": "26_NotificationLog",
+                  "item": {
+                    "Title": "@{outputs('Notification_key')}",
+                    "RuleCode": "ExportLC-03-MissingDocuments",
+                    "EntityName": "01_ExportLCs",
+                    "RecordReference": "@{items('Apply_to_each_LC')?['LCNumber']}",
+                    "InternalLCID": "@{items('Apply_to_each_LC')?['Title']}",
+                    "RecipientEmail": "@{coalesce(items('Apply_to_each_LC')?['ResponsibleOfficerEmail'], '')}",
+                    "SentTimestamp": "@{utcNow()}",
+                    "SendStatus": "Sent",
+                    "PartitionKey": "@{formatDateTime(utcNow(), 'yyyy-MM')}"
+                  }
+                },
+                "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+              },
+              "runAfter": {
+                "Send_chase": [
+                  "Succeeded"
+                ]
+              }
+            }
+          },
+          "else": {
+            "actions": {}
+          }
+        }
+      }
+    }
+  },
+  "outputs": {}
+}

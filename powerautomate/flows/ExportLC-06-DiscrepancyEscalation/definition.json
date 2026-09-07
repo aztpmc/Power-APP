@@ -1,0 +1,360 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    },
+    "SiteUrl": {
+      "defaultValue": "https://CONTOSO.sharepoint.com/sites/ExportLCPortal",
+      "type": "String",
+      "metadata": {
+        "description": "Portal site collection URL. Set before enabling."
+      }
+    }
+  },
+  "triggers": {
+    "Daily": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "timeZone": "Arabian Standard Time",
+        "schedule": {
+          "hours": [
+            "8"
+          ],
+          "minutes": [
+            0
+          ]
+        }
+      }
+    }
+  },
+  "actions": {
+    "Get_level1_days": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "18_WorkflowConfig",
+          "$filter": "Title eq 'DiscrepancyEscalationDays'",
+          "$top": 1
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      }
+    },
+    "Get_level2_days": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "18_WorkflowConfig",
+          "$filter": "Title eq 'DiscrepancyEscalationLevel2Days'",
+          "$top": 1
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      },
+      "runAfter": {
+        "Get_level1_days": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Get_escalation_mailbox": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "18_WorkflowConfig",
+          "$filter": "Title eq 'EscalationManagerEmail'",
+          "$top": 1
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      },
+      "runAfter": {
+        "Get_level2_days": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Get_open_discrepancies": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "06_Discrepancies",
+          "$filter": "IsOpen eq 1",
+          "$top": 500
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      },
+      "runAfter": {
+        "Get_escalation_mailbox": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Apply_to_each_discrepancy": {
+      "type": "Foreach",
+      "foreach": "@body('Get_open_discrepancies')?['value']",
+      "runAfter": {
+        "Get_open_discrepancies": [
+          "Succeeded"
+        ]
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "repetitions": 8
+        }
+      },
+      "actions": {
+        "Days_open": {
+          "type": "Compose",
+          "inputs": "@{div(sub(ticks(utcNow()), ticks(coalesce(items('Apply_to_each_discrepancy')?['DetectedDate'], utcNow()))), 864000000000)}"
+        },
+        "Get_category_rule": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "24_DiscrepancyCategories",
+              "$filter": "CategoryCode eq '@{coalesce(items('Apply_to_each_discrepancy')?['CategoryCode'], '')}'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Days_open": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Threshold_level1": {
+          "type": "Compose",
+          "inputs": "@{coalesce(first(body('Get_category_rule')?['value'])?['EscalateAfterDays'], int(coalesce(first(body('Get_level1_days')?['value'])?['ConfigValue'],'5')))}",
+          "runAfter": {
+            "Get_category_rule": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "comment": "The category's own escalation window wins; configuration is the fallback. A late-presentation discrepancy escalates in two days, a typo in five."
+          }
+        },
+        "Target_level": {
+          "type": "Compose",
+          "inputs": "@{if(greaterOrEquals(int(outputs('Days_open')), int(coalesce(first(body('Get_level2_days')?['value'])?['ConfigValue'],'10'))), 2, if(greaterOrEquals(int(outputs('Days_open')), int(outputs('Threshold_level1'))), 1, 0))}",
+          "runAfter": {
+            "Threshold_level1": [
+              "Succeeded"
+            ]
+          }
+        },
+        "If_escalation_due": {
+          "type": "If",
+          "expression": {
+            "and": [
+              {
+                "greater": [
+                  "@int(outputs('Target_level'))",
+                  0
+                ]
+              },
+              {
+                "greater": [
+                  "@int(outputs('Target_level'))",
+                  "@int(coalesce(items('Apply_to_each_discrepancy')?['EscalationLevel'], 0))"
+                ]
+              }
+            ]
+          },
+          "runAfter": {
+            "Target_level": [
+              "Succeeded"
+            ]
+          },
+          "actions": {
+            "Get_assignee": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "GetItems",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('SiteUrl')",
+                  "table": "17_Users",
+                  "$filter": "UserEmail eq '@{coalesce(items('Apply_to_each_discrepancy')?['AssignedToEmail'], '')}'",
+                  "$top": 1
+                },
+                "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+              },
+              "runtimeConfiguration": {
+                "paginationPolicy": {
+                  "minimumItemCount": 5000
+                }
+              }
+            },
+            "Escalation_recipient": {
+              "type": "Compose",
+              "inputs": "@{if(equals(int(outputs('Target_level')), 2), coalesce(first(body('Get_escalation_mailbox')?['value'])?['ConfigValue'], ''), coalesce(first(body('Get_assignee')?['value'])?['ManagerEmail'], first(body('Get_escalation_mailbox')?['value'])?['ConfigValue'], ''))}",
+              "runAfter": {
+                "Get_assignee": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Send_escalation": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_office365",
+                  "operationId": "SendEmailV2",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                },
+                "parameters": {
+                  "emailMessage/To": "@{outputs('Escalation_recipient')}",
+                  "emailMessage/Subject": "Escalation level @{outputs('Target_level')}: discrepancy @{items('Apply_to_each_discrepancy')?['Title']} open @{outputs('Days_open')} days",
+                  "emailMessage/Body": "<p>Discrepancy <strong>@{items('Apply_to_each_discrepancy')?['Title']}</strong> on LC <strong>@{items('Apply_to_each_discrepancy')?['LCNumber']}</strong> has been open for <strong>@{outputs('Days_open')} days</strong>.</p><p>Category: @{items('Apply_to_each_discrepancy')?['CategoryName']}<br/>Severity: @{items('Apply_to_each_discrepancy')?['Severity']}<br/>Status: @{items('Apply_to_each_discrepancy')?['DiscrepancyStatus']}<br/>Assigned to: @{coalesce(items('Apply_to_each_discrepancy')?['AssignedToEmail'], 'nobody')}</p><p>@{items('Apply_to_each_discrepancy')?['DiscrepancyDescription']}</p><p>An unresolved discrepancy blocks payment on the presentation it belongs to.</p>",
+                  "emailMessage/Importance": "High"
+                },
+                "authentication": "@parameters('$connections')['shared_office365']['authentication']"
+              },
+              "runAfter": {
+                "Escalation_recipient": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Update_escalation_level": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PatchItem",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('SiteUrl')",
+                  "table": "06_Discrepancies",
+                  "id": "@{items('Apply_to_each_discrepancy')?['ID']}",
+                  "item": {
+                    "EscalationLevel": "@{int(outputs('Target_level'))}",
+                    "LastEscalatedDate": "@{utcNow()}"
+                  }
+                },
+                "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+              },
+              "runAfter": {
+                "Send_escalation": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Audit_escalation": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PostItem",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('SiteUrl')",
+                  "table": "10_AuditLog",
+                  "item": {
+                    "Title": "Discrepancy:@{items('Apply_to_each_discrepancy')?['Title']}:EscalationLevel",
+                    "EntityName": "Discrepancy",
+                    "RecordItemId": "@{items('Apply_to_each_discrepancy')?['ID']}",
+                    "RecordReference": "@{items('Apply_to_each_discrepancy')?['Title']}",
+                    "InternalLCID": "@{items('Apply_to_each_discrepancy')?['InternalLCID']}",
+                    "LCNumber": "@{items('Apply_to_each_discrepancy')?['LCNumber']}",
+                    "ActionType": "Update",
+                    "FieldName": "EscalationLevel",
+                    "OldValue": "@{string(coalesce(items('Apply_to_each_discrepancy')?['EscalationLevel'], 0))}",
+                    "NewValue": "@{outputs('Target_level')}",
+                    "IsCriticalField": true,
+                    "ActionByEmail": "system@exportlcportal",
+                    "ActionByName": "Export LC Portal automation",
+                    "ActionTimestamp": "@{utcNow()}",
+                    "ActionSource": "Power Automate",
+                    "ActionComment": "Escalated after @{outputs('Days_open')} days open",
+                    "CorrelationId": "@{workflow()['run']['name']}",
+                    "PartitionKey": "@{formatDateTime(utcNow(), 'yyyy-MM')}"
+                  }
+                },
+                "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+              },
+              "runAfter": {
+                "Update_escalation_level": [
+                  "Succeeded"
+                ]
+              }
+            }
+          },
+          "else": {
+            "actions": {}
+          }
+        }
+      }
+    }
+  },
+  "outputs": {}
+}

@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+
+# Provisioning and load reports are per-run artefacts, not source
+sharepoint/scripts/provision-report-*.csv
+sharepoint/scripts/environment-inventory-*.csv
+sharepoint/scripts/existing-object-conflicts-*.csv
+sharepoint/scripts/masterdata-load-*.csv
+
+# Built flow packages
+powerautomate/packages/
+
+# Packed canvas app
+*.msapp

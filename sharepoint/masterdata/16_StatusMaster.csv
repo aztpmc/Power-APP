@@ -1,0 +1,84 @@
+Title,EntityName,StatusCode,StatusDisplayName,LifecycleStage,StageOrder,BadgeColor,AllowedNextStatuses,RequiresApproval,ApprovalRoleCode,RequiresComment,IsOpenState,IsTerminal,IsActive,SortOrder
+Draft,ExportLC,Draft,Draft,Received,1,Muted,Received;Cancelled,FALSE,,FALSE,TRUE,FALSE,TRUE,10
+Received,ExportLC,Received,Received,Received,1,Info,Under Review;Cancelled,FALSE,,FALSE,TRUE,FALSE,TRUE,20
+Under Review,ExportLC,Under Review,Under Review,Reviewed,2,Progress,Active;Received;Cancelled,FALSE,,TRUE,TRUE,FALSE,TRUE,30
+Active,ExportLC,Active,Active,Active,3,Success,Shipment Pending;Presented;Expired;Closed;Cancelled,FALSE,,FALSE,TRUE,FALSE,TRUE,40
+Shipment Pending,ExportLC,Shipment Pending,Shipment Pending,Shipment,4,Progress,Presented;Active;Expired,FALSE,,FALSE,TRUE,FALSE,TRUE,50
+Presented,ExportLC,Presented,Presented,Presentation,5,Progress,Under Examination;Expired,FALSE,,FALSE,TRUE,FALSE,TRUE,60
+Under Examination,ExportLC,Under Examination,Under Examination,Examination,6,Progress,Clean;Discrepancy,FALSE,,FALSE,TRUE,FALSE,TRUE,70
+Clean,ExportLC,Clean,Clean,Examination,6,Success,Accepted,FALSE,,FALSE,TRUE,FALSE,TRUE,80
+Discrepancy,ExportLC,Discrepancy,Discrepancy,Examination,6,Danger,Clean;Accepted;Under Examination,FALSE,,TRUE,TRUE,FALSE,TRUE,90
+Accepted,ExportLC,Accepted,Accepted,Acceptance,7,Success,Partially Drawn;Fully Drawn;Paid,FALSE,,FALSE,TRUE,FALSE,TRUE,100
+Partially Drawn,ExportLC,Partially Drawn,Partially Drawn,Acceptance,7,Progress,Shipment Pending;Presented;Fully Drawn;Expired,FALSE,,FALSE,TRUE,FALSE,TRUE,110
+Fully Drawn,ExportLC,Fully Drawn,Fully Drawn,Acceptance,7,Info,Paid;Closed,FALSE,,FALSE,TRUE,FALSE,TRUE,120
+Paid,ExportLC,Paid,Paid,Payment,8,Success,Closed,FALSE,,FALSE,TRUE,FALSE,TRUE,130
+Closed,ExportLC,Closed,Closed,Closed,9,Muted,,TRUE,MANAGER,TRUE,FALSE,TRUE,TRUE,140
+Cancelled,ExportLC,Cancelled,Cancelled,Closed,9,Muted,,TRUE,MANAGER,TRUE,FALSE,TRUE,TRUE,150
+Expired,ExportLC,Expired,Expired,Closed,9,Warning,Closed;Cancelled,FALSE,,TRUE,TRUE,FALSE,TRUE,160
+Draft,Amendment,Draft,Draft,,1,Muted,Received;Cancelled,FALSE,,FALSE,TRUE,FALSE,TRUE,10
+Received,Amendment,Received,Received,,2,Info,Under Review;Rejected;Cancelled,FALSE,,FALSE,TRUE,FALSE,TRUE,20
+Under Review,Amendment,Under Review,Under Review,,3,Progress,Pending Acceptance;Rejected,FALSE,,FALSE,TRUE,FALSE,TRUE,30
+Pending Acceptance,Amendment,Pending Acceptance,Pending Acceptance,,4,Warning,Accepted;Rejected,FALSE,,FALSE,TRUE,FALSE,TRUE,40
+Accepted,Amendment,Accepted,Accepted,,5,Success,Applied,TRUE,MANAGER,FALSE,TRUE,FALSE,TRUE,50
+Applied,Amendment,Applied,Applied to LC,,6,Success,,FALSE,,FALSE,FALSE,TRUE,TRUE,60
+Rejected,Amendment,Rejected,Rejected,,7,Danger,,FALSE,,TRUE,FALSE,TRUE,TRUE,70
+Cancelled,Amendment,Cancelled,Cancelled,,8,Muted,,FALSE,,TRUE,FALSE,TRUE,TRUE,80
+Draft,Invoice,Draft,Draft,,1,Muted,Issued;Cancelled,FALSE,,FALSE,TRUE,FALSE,TRUE,10
+Issued,Invoice,Issued,Issued,,2,Info,Presented;Cancelled,FALSE,,FALSE,TRUE,FALSE,TRUE,20
+Presented,Invoice,Presented,Presented,,3,Progress,Under Examination,FALSE,,FALSE,TRUE,FALSE,TRUE,30
+Under Examination,Invoice,Under Examination,Under Examination,,4,Progress,Accepted;Discrepant,FALSE,,FALSE,TRUE,FALSE,TRUE,40
+Accepted,Invoice,Accepted,Accepted,,5,Success,Negotiated;Collected;Paid;Partially Paid;Overdue,FALSE,,FALSE,TRUE,FALSE,TRUE,50
+Discrepant,Invoice,Discrepant,Discrepant,,5,Danger,Accepted;Presented;Cancelled,FALSE,,TRUE,TRUE,FALSE,TRUE,60
+Negotiated,Invoice,Negotiated,Negotiated,,6,Progress,Collected;Paid;Partially Paid,FALSE,,FALSE,TRUE,FALSE,TRUE,70
+Collected,Invoice,Collected,Collected,,7,Progress,Paid;Partially Paid;Overdue,FALSE,,FALSE,TRUE,FALSE,TRUE,80
+Partially Paid,Invoice,Partially Paid,Partially Paid,,8,Warning,Paid;Overdue,FALSE,,FALSE,TRUE,FALSE,TRUE,90
+Overdue,Invoice,Overdue,Overdue,,8,Danger,Paid;Partially Paid;Collected,FALSE,,FALSE,TRUE,FALSE,TRUE,100
+Paid,Invoice,Paid,Paid,,9,Success,,FALSE,,FALSE,FALSE,TRUE,TRUE,110
+Cancelled,Invoice,Cancelled,Cancelled,,10,Muted,,TRUE,MANAGER,TRUE,FALSE,TRUE,TRUE,120
+Planned,Shipment,Planned,Planned,,1,Muted,In Preparation;Cancelled,FALSE,,FALSE,TRUE,FALSE,TRUE,10
+In Preparation,Shipment,In Preparation,In Preparation,,2,Info,Ready;Cancelled,FALSE,,FALSE,TRUE,FALSE,TRUE,20
+Ready,Shipment,Ready,Ready to Ship,,3,Progress,Shipped;Overdue;Cancelled,FALSE,,FALSE,TRUE,FALSE,TRUE,30
+Shipped,Shipment,Shipped,Shipped,,4,Success,In Transit;Delivered;Documents Presented,FALSE,,FALSE,TRUE,FALSE,TRUE,40
+In Transit,Shipment,In Transit,In Transit,,5,Progress,Delivered;Documents Presented,FALSE,,FALSE,TRUE,FALSE,TRUE,50
+Delivered,Shipment,Delivered,Delivered,,6,Success,Documents Presented,FALSE,,FALSE,TRUE,FALSE,TRUE,60
+Documents Presented,Shipment,Documents Presented,Documents Presented,,7,Success,,FALSE,,FALSE,FALSE,TRUE,TRUE,70
+Overdue,Shipment,Overdue,Past Latest Shipment Date,,7,Danger,Shipped;Cancelled,FALSE,,TRUE,TRUE,FALSE,TRUE,80
+Cancelled,Shipment,Cancelled,Cancelled,,8,Muted,,FALSE,,TRUE,FALSE,TRUE,TRUE,90
+Draft,Presentation,Draft,Draft,,1,Muted,Ready;Closed,FALSE,,FALSE,TRUE,FALSE,TRUE,10
+Ready,Presentation,Ready,Ready to Present,,2,Info,Presented;Draft,FALSE,,FALSE,TRUE,FALSE,TRUE,20
+Presented,Presentation,Presented,Presented to Bank,,3,Progress,Under Examination,FALSE,,FALSE,TRUE,FALSE,TRUE,30
+Under Examination,Presentation,Under Examination,Under Examination,,4,Progress,Clean;Discrepancy,FALSE,,FALSE,TRUE,FALSE,TRUE,40
+Clean,Presentation,Clean,Clean,,5,Success,Accepted;Negotiated,FALSE,,FALSE,TRUE,FALSE,TRUE,50
+Discrepancy,Presentation,Discrepancy,Discrepant,,5,Danger,Clean;Accepted;Rejected;Ready,FALSE,,TRUE,TRUE,FALSE,TRUE,60
+Accepted,Presentation,Accepted,Accepted,,6,Success,Negotiated;Paid,FALSE,,FALSE,TRUE,FALSE,TRUE,70
+Negotiated,Presentation,Negotiated,Negotiated,,7,Progress,Paid,FALSE,,FALSE,TRUE,FALSE,TRUE,80
+Paid,Presentation,Paid,Paid,,8,Success,Closed,FALSE,,FALSE,TRUE,FALSE,TRUE,90
+Rejected,Presentation,Rejected,Rejected by Bank,,8,Danger,Ready;Closed,FALSE,,TRUE,TRUE,FALSE,TRUE,100
+Closed,Presentation,Closed,Closed,,9,Muted,,FALSE,,FALSE,FALSE,TRUE,TRUE,110
+Open,Discrepancy,Open,Open,,1,Danger,Under Review;Waiver Requested;Corrected;Closed,FALSE,,FALSE,TRUE,FALSE,TRUE,10
+Under Review,Discrepancy,Under Review,Under Review,,2,Progress,Waiver Requested;Corrected;Rejected;Resolved,FALSE,,FALSE,TRUE,FALSE,TRUE,20
+Waiver Requested,Discrepancy,Waiver Requested,Waiver Requested,,3,Warning,Waived;Rejected;Corrected,FALSE,,FALSE,TRUE,FALSE,TRUE,30
+Waived,Discrepancy,Waived,Waived by Applicant,,4,Success,Resolved;Closed,FALSE,,FALSE,TRUE,FALSE,TRUE,40
+Corrected,Discrepancy,Corrected,Documents Corrected,,4,Success,Resolved;Closed,FALSE,,FALSE,TRUE,FALSE,TRUE,50
+Resolved,Discrepancy,Resolved,Resolved,,5,Success,Closed,FALSE,,TRUE,FALSE,FALSE,TRUE,60
+Rejected,Discrepancy,Rejected,Rejected - Unresolved,,5,Danger,Closed,TRUE,MANAGER,TRUE,TRUE,FALSE,TRUE,70
+Closed,Discrepancy,Closed,Closed,,6,Muted,,FALSE,,FALSE,FALSE,TRUE,TRUE,80
+Expected,Proceeds,Expected,Expected,,1,Muted,Accepted;Closed,FALSE,,FALSE,TRUE,FALSE,TRUE,10
+Accepted,Proceeds,Accepted,Accepted by Bank,,2,Info,Awaiting Maturity;Received;Partially Received,FALSE,,FALSE,TRUE,FALSE,TRUE,20
+Awaiting Maturity,Proceeds,Awaiting Maturity,Awaiting Maturity,,3,Progress,Received;Partially Received;Overdue,FALSE,,FALSE,TRUE,FALSE,TRUE,30
+Partially Received,Proceeds,Partially Received,Partially Received,,4,Warning,Received;Overdue,FALSE,,FALSE,TRUE,FALSE,TRUE,40
+Overdue,Proceeds,Overdue,Overdue,,4,Danger,Received;Partially Received;Written Off,FALSE,,FALSE,TRUE,FALSE,TRUE,50
+Received,Proceeds,Received,Received in Full,,5,Success,Closed,FALSE,,FALSE,FALSE,FALSE,TRUE,60
+Written Off,Proceeds,Written Off,Written Off,,5,Danger,Closed,TRUE,MANAGER,TRUE,FALSE,FALSE,TRUE,70
+Closed,Proceeds,Closed,Closed,,6,Muted,,FALSE,,FALSE,FALSE,TRUE,TRUE,80
+New,Correspondence,New,New,,1,Info,In Progress;Awaiting Bank;Awaiting Customer;Closed,FALSE,,FALSE,TRUE,FALSE,TRUE,10
+In Progress,Correspondence,In Progress,In Progress,,2,Progress,Awaiting Bank;Awaiting Customer;Responded;Closed,FALSE,,FALSE,TRUE,FALSE,TRUE,20
+Awaiting Bank,Correspondence,Awaiting Bank,Awaiting Bank,,3,Warning,Responded;In Progress;Closed,FALSE,,FALSE,TRUE,FALSE,TRUE,30
+Awaiting Customer,Correspondence,Awaiting Customer,Awaiting Customer,,3,Warning,Responded;In Progress;Closed,FALSE,,FALSE,TRUE,FALSE,TRUE,40
+Responded,Correspondence,Responded,Responded,,4,Success,Closed,FALSE,,FALSE,TRUE,FALSE,TRUE,50
+Closed,Correspondence,Closed,Closed,,5,Muted,,FALSE,,FALSE,FALSE,TRUE,TRUE,60
+Not Started,Task,Not Started,Not Started,,1,Muted,In Progress;Waiting;Cancelled;Completed,FALSE,,FALSE,TRUE,FALSE,TRUE,10
+In Progress,Task,In Progress,In Progress,,2,Progress,Waiting;Completed;Cancelled,FALSE,,FALSE,TRUE,FALSE,TRUE,20
+Waiting,Task,Waiting,Waiting,,3,Warning,In Progress;Completed;Cancelled,FALSE,,FALSE,TRUE,FALSE,TRUE,30
+Completed,Task,Completed,Completed,,4,Success,,FALSE,,FALSE,FALSE,TRUE,TRUE,40
+Cancelled,Task,Cancelled,Cancelled,,5,Muted,,FALSE,,TRUE,FALSE,TRUE,TRUE,50

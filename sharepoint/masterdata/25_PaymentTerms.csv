@@ -1,0 +1,7 @@
+﻿Title,PaymentTermCode,SettlementType,TenorDays,MaturityBasis,IsActive,SortOrder
+60 Calendar Days After Presentation Of Complied Documents,60CALENDARDAYSAFTERPRESENTATIONOFCOMPLIE,Deferred,60,Presentation Date,TRUE,100
+90 Days From Dn,90DAYSFROMDN,Deferred,90,Invoice Date,TRUE,100
+180 Days From Shipment,180DAYSFROMSHIPMENT,Deferred,180,Shipment Date,TRUE,100
+180 Days From Shipment Beneficiary Draft,180DAYSFROMSHIPMENTBENEFICIARYDRAFT,Deferred,180,Shipment Date,TRUE,100
+180 Days From TCN,180DAYSFROMTCN,Deferred,180,TCN Date,TRUE,100
+At Sight,ATSIGHT,Sight,0,Sight,TRUE,100

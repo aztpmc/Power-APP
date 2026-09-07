@@ -1,0 +1,231 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    },
+    "SiteUrl": {
+      "defaultValue": "https://CONTOSO.sharepoint.com/sites/ExportLCPortal",
+      "type": "String",
+      "metadata": {
+        "description": "Portal site collection URL. Set before enabling."
+      }
+    }
+  },
+  "triggers": {
+    "Daily": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "timeZone": "Arabian Standard Time",
+        "schedule": {
+          "hours": [
+            "8"
+          ],
+          "minutes": [
+            0
+          ]
+        }
+      }
+    }
+  },
+  "actions": {
+    "Get_cadence": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "18_WorkflowConfig",
+          "$filter": "Title eq 'AmendmentActionReminderDays'",
+          "$top": 1
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      }
+    },
+    "Get_open_amendments": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+          "dataset": "@parameters('SiteUrl')",
+          "table": "02_LCAmendments",
+          "$filter": "AppliedToLC eq 0 and AmendmentStatus ne 'Rejected' and AmendmentStatus ne 'Cancelled'",
+          "$top": 500
+        },
+        "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 5000
+        }
+      },
+      "runAfter": {
+        "Get_cadence": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Apply_to_each_amendment": {
+      "type": "Foreach",
+      "foreach": "@body('Get_open_amendments')?['value']",
+      "runAfter": {
+        "Get_open_amendments": [
+          "Succeeded"
+        ]
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "repetitions": 8
+        }
+      },
+      "actions": {
+        "Notification_key": {
+          "type": "Compose",
+          "inputs": "@{concat('ExportLC-04-AmendmentAction:', items('Apply_to_each_amendment')?['Title'], ':', div(int(formatDateTime(utcNow(),'yyyyMMdd')), int(coalesce(first(body('Get_cadence')?['value'])?['ConfigValue'],'3'))))}"
+        },
+        "Check_already_sent": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('SiteUrl')",
+              "table": "26_NotificationLog",
+              "$filter": "Title eq '@{outputs('Notification_key')}'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 5000
+            }
+          },
+          "runAfter": {
+            "Notification_key": [
+              "Succeeded"
+            ]
+          }
+        },
+        "If_not_sent": {
+          "type": "If",
+          "expression": {
+            "equals": [
+              "@length(body('Check_already_sent')?['value'])",
+              0
+            ]
+          },
+          "runAfter": {
+            "Check_already_sent": [
+              "Succeeded"
+            ]
+          },
+          "actions": {
+            "Get_parent_LC": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "GetItems",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('SiteUrl')",
+                  "table": "01_ExportLCs",
+                  "$filter": "ID eq @{items('Apply_to_each_amendment')?['LCItemId']}",
+                  "$top": 1
+                },
+                "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+              },
+              "runtimeConfiguration": {
+                "paginationPolicy": {
+                  "minimumItemCount": 5000
+                }
+              }
+            },
+            "Send_amendment_notice": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_office365",
+                  "operationId": "SendEmailV2",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                },
+                "parameters": {
+                  "emailMessage/To": "@{coalesce(first(body('Get_parent_LC')?['value'])?['ResponsibleOfficerEmail'], '')}",
+                  "emailMessage/Subject": "Amendment @{items('Apply_to_each_amendment')?['AmendmentNumber']} on LC @{items('Apply_to_each_amendment')?['LCNumber']} needs action",
+                  "emailMessage/Body": "<p>Amendment <strong>@{items('Apply_to_each_amendment')?['Title']}</strong> is at status <strong>@{items('Apply_to_each_amendment')?['AmendmentStatus']}</strong>.</p><p>Customer acceptance: @{items('Apply_to_each_amendment')?['CustomerAcceptance']}<br/>Bank confirmation: @{items('Apply_to_each_amendment')?['BankConfirmation']}</p><p><strong>The LC register still shows the pre-amendment terms until this amendment is applied.</strong> Anyone reading the register today is reading terms the bank has already changed.</p><p>@{items('Apply_to_each_amendment')?['AmendmentDescription']}</p>",
+                  "emailMessage/Importance": "High"
+                },
+                "authentication": "@parameters('$connections')['shared_office365']['authentication']"
+              },
+              "runAfter": {
+                "Get_parent_LC": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Log_notification": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PostItem",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('SiteUrl')",
+                  "table": "26_NotificationLog",
+                  "item": {
+                    "Title": "@{outputs('Notification_key')}",
+                    "RuleCode": "ExportLC-04-AmendmentAction",
+                    "EntityName": "02_LCAmendments",
+                    "RecordReference": "@{items('Apply_to_each_amendment')?['Title']}",
+                    "InternalLCID": "@{items('Apply_to_each_amendment')?['InternalLCID']}",
+                    "SentTimestamp": "@{utcNow()}",
+                    "SendStatus": "Sent",
+                    "PartitionKey": "@{formatDateTime(utcNow(), 'yyyy-MM')}"
+                  }
+                },
+                "authentication": "@parameters('$connections')['shared_sharepointonline']['authentication']"
+              },
+              "runAfter": {
+                "Send_amendment_notice": [
+                  "Succeeded"
+                ]
+              }
+            }
+          },
+          "else": {
+            "actions": {}
+          }
+        }
+      }
+    }
+  },
+  "outputs": {}
+}

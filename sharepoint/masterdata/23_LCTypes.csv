@@ -1,0 +1,11 @@
+Title,LCTypeCode,DefaultAvailableBy,DefaultPresentationDays,DefaultIrrevocable,RequiresConfirmation,LCTypeDescription,IsActive,SortOrder
+Irrevocable Sight LC,IRRSIGHT,Sight Payment,21,TRUE,FALSE,Payment on presentation of complying documents.,TRUE,10
+Irrevocable Deferred Payment LC,IRRDEF,Deferred Payment,21,TRUE,FALSE,Payment at a determinable future date. The dominant type in this portfolio.,TRUE,20
+Irrevocable Acceptance LC,IRRACC,Acceptance,21,TRUE,FALSE,Bank accepts a time draft and pays at maturity.,TRUE,30
+Irrevocable Negotiation LC,IRRNEG,Negotiation,21,TRUE,FALSE,Nominated bank negotiates drafts and documents.,TRUE,40
+Confirmed Irrevocable LC,CONFIRR,Deferred Payment,21,TRUE,TRUE,Carries a confirming bank undertaking. Used for higher-risk issuing countries.,TRUE,50
+Transferable LC,TRANSF,Negotiation,21,TRUE,FALSE,May be transferred in whole or part to a second beneficiary.,TRUE,60
+Revolving LC,REVOLV,Deferred Payment,21,TRUE,FALSE,Reinstates automatically by value or by time.,TRUE,70
+Standby LC,SBLC,Sight Payment,30,TRUE,FALSE,Performance or payment guarantee rather than a payment mechanism.,TRUE,80
+Back-to-Back LC,BTB,Negotiation,21,TRUE,FALSE,Issued against another LC held as security.,TRUE,90
+Red Clause LC,REDCL,Negotiation,21,TRUE,FALSE,Permits a pre-shipment advance to the beneficiary.,TRUE,100

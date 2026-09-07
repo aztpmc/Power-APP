@@ -1,0 +1,26 @@
+Title,CategoryCode,CategoryGroup,DefaultSeverity,DefaultResolutionDays,UsuallyRequiresWaiver,EscalateAfterDays,GuidanceText,IsActive,SortOrder
+Late presentation,LATEPRES,Timing,Critical,2,TRUE,2,Documents presented after the presentation period or after LC expiry. Cannot be corrected - request a waiver or send on approval basis.,TRUE,10
+Late shipment,LATESHIP,Timing,Critical,2,TRUE,2,Shipment effected after the latest shipment date. Not curable by re-presentation; a waiver or an amendment is required.,TRUE,20
+LC expired,LCEXPIRED,Timing,Critical,1,TRUE,1,Credit expired before presentation. Escalate to the treasury manager immediately.,TRUE,30
+Amount exceeds LC value,AMTEXCEED,Amount,Major,3,TRUE,3,Drawing exceeds the available balance including tolerance. Check for an unrecorded amendment first.,TRUE,40
+Amount below tolerance,AMTUNDER,Amount,Minor,3,FALSE,5,Drawing below the permitted negative tolerance. Usually acceptable to the applicant.,TRUE,50
+Invoice value differs from LC,INVDIFF,Amount,Major,3,FALSE,3,Invoice total does not agree with the credit or the draft. Recheck the calculation and unit prices.,TRUE,60
+Description of goods differs,GOODSDESC,Documentary,Major,3,FALSE,3,Goods description on the invoice must correspond with the credit. Other documents may use a general description.,TRUE,70
+Document missing,DOCMISS,Documentary,Critical,2,FALSE,2,A required document was not presented. Present the missing document within the presentation period if still open.,TRUE,80
+Insufficient originals or copies,DOCCOUNT,Documentary,Major,2,FALSE,3,Number of originals or copies does not match the credit requirement.,TRUE,90
+Document not signed,DOCSIGN,Documentary,Major,2,FALSE,3,"Required signature, stamp or authentication missing.",TRUE,100
+Document not endorsed,DOCENDORSE,Transport,Major,2,FALSE,3,Transport document not endorsed as required by the credit.,TRUE,110
+Inconsistent data between documents,DATAINCON,Data Consistency,Major,3,FALSE,3,"Data in one document conflicts with another. UCP 600 art. 14d requires consistency, not identity.",TRUE,120
+Spelling or typographical error,TYPO,Data Consistency,Minor,2,FALSE,5,Minor typing errors are generally not discrepancies unless they change meaning. Assess before raising.,TRUE,130
+Bill of lading not clean,BLNOTCLEAN,Transport,Critical,2,TRUE,2,Transport document bears a clause declaring a defective condition of goods or packing.,TRUE,140
+Bill of lading not marked freight paid,BLFREIGHT,Transport,Major,2,FALSE,3,Freight payment notation does not match the Incoterm in the credit.,TRUE,150
+Transshipment not permitted,TRANSSHIP,Transport,Major,3,TRUE,3,Transport document evidences transshipment where the credit prohibits it.,TRUE,160
+Partial shipment not permitted,PARTSHIP,Transport,Major,3,TRUE,3,Partial shipment effected where the credit prohibits it.,TRUE,170
+Port of loading or discharge differs,PORTDIFF,Transport,Major,3,FALSE,3,Ports shown do not match the credit.,TRUE,180
+Insurance amount insufficient,INSAMT,Insurance,Major,2,FALSE,3,Insurance must cover at least 110 percent of CIF or CIP value unless the credit states otherwise.,TRUE,190
+Insurance currency differs,INSCCY,Insurance,Major,2,FALSE,3,Insurance document must be in the currency of the credit.,TRUE,200
+Insurance dated after shipment,INSDATE,Insurance,Major,2,TRUE,3,Insurance cover must be effective no later than the date of shipment.,TRUE,210
+Certificate of origin issuer incorrect,COOISSUER,Official / Certificate,Major,3,FALSE,3,Certificate not issued by the chamber of commerce or authority named in the credit.,TRUE,220
+Legalisation or attestation missing,LEGALISE,Official / Certificate,Major,4,FALSE,4,Consular legalisation or embassy attestation required by the credit is absent.,TRUE,230
+Draft drawn incorrectly,DRAFTERR,Commercial,Major,2,FALSE,3,"Tenor, drawee or amount on the bill of exchange does not match the credit.",TRUE,240
+Other,OTHER,Other,Major,3,FALSE,5,"Use only when no other category fits, and describe the finding fully.",TRUE,999

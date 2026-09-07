@@ -1,0 +1,498 @@
+# =============================================================================
+# scrDashboard - the portal home
+# =============================================================================
+# Answers one question on load: what is happening with my Export LCs?
+#
+#   * 12 KPI tiles, every one of them clickable and every one drilling through to a
+#     pre-filtered register or module rather than a dead end.
+#   * A "needs attention" list ordered by how close each LC is to a deadline.
+#   * Recent activity straight from the audit trail, so the dashboard doubles as a
+#     handover screen for whoever picks the book up in the morning.
+#
+# Performance: KPI numbers come from 29_DashboardMetrics, which FLOW-11 recomputes
+# server-side. The dashboard never counts rows itself - CountRows() is not delegable
+# against SharePoint and would silently cap at the row limit once the register grows.
+# The two galleries below are delegable Filter + SortByColumns queries with a small
+# row cap, so this screen costs three cheap calls no matter how big the book gets.
+# =============================================================================
+
+scrDashboard As screen:
+    Fill: =ThemeCanvas
+    OnVisible: |
+        =Set(gblNavSection, "HOME");
+        // One read of the metric rows. Refreshed by FLOW-11; the user can force a
+        // recompute from the header if a number looks stale.
+        ClearCollect(
+            colMetrics,
+            Filter('29_DashboardMetrics', MetricScope = If(gblDashScopeMine, User().Email, "ALL"))
+        );
+        Set(gblMetricAge, DateDiff(Max(colMetrics, ComputedAt), Now(), Minutes))
+
+    # -------------------------------------------------------------------------
+    navRail As cmpNavRail:
+        X: =0
+        Y: =0
+        Width: =RailWidth
+        Height: =Parent.Height
+        ActiveKey: ="HOME"
+        UserName: =gblUserName
+        RoleLabel: |
+            =Switch(gblRole,
+                "ADMIN", "Administrator", "MANAGER", "Treasury Manager",
+                "OFFICER", "Treasury Officer", "REVIEWER", "Reviewer", "Read only")
+        BadgePendingAction: =LookUp(colMetrics, Title = "PENDING_ACTION").MetricCount
+        BadgeDiscrepancies: =LookUp(colMetrics, Title = "OPEN_DISCREPANCIES").MetricCount
+        BadgeTasks: =LookUp(colMetrics, Title = "OVERDUE_TASKS").MetricCount
+        # The canonical navigation handler. Copy this identical formula onto every screen -
+        # it is the only place any screen decides where the rail goes.
+        OnNavigate: |
+            =Switch(
+                gblNavSection,
+                "HOME",      Navigate(scrDashboard, ScreenTransition.None),
+                "LCS",       Navigate(scrLCRegister, ScreenTransition.None),
+                "INVOICES",  Navigate(scrInvoices, ScreenTransition.None),
+                "SHIPMENTS", Navigate(scrShipments, ScreenTransition.None),
+                "PRESENT",   Navigate(scrPresentations, ScreenTransition.None),
+                "DOCS",      Navigate(scrDocuments, ScreenTransition.None),
+                "DISCREP",   Navigate(scrDiscrepancies, ScreenTransition.None),
+                "PROCEEDS",  Navigate(scrProceeds, ScreenTransition.None),
+                "CORRESP",   Navigate(scrCorrespondence, ScreenTransition.None),
+                "TASKS",     Navigate(scrTasks, ScreenTransition.None),
+                "REPORTS",   Navigate(scrReports, ScreenTransition.None),
+                "ADMIN",     Navigate(scrAdmin, ScreenTransition.None)
+            )
+
+    topBar As cmpTopBar:
+        X: =ContentX
+        Y: =0
+        Width: =ContentWidth
+        Height: =ThemeTopBarHeight
+        TitleText: ="Good " & If(Hour(Now()) < 12, "morning", Hour(Now()) < 17, "afternoon", "evening") & ", " & First(Split(gblUserName, " ")).Value
+        Breadcrumb: ="Home  ·  " & Text(Today0, "dddd d mmmm yyyy")
+        ShowSearch: =true
+        ShowPrimary: =CanCreateLC
+        PrimaryLabel: ="Register LC"
+        OnPrimary: |
+            =Set(gblEditLC, Blank());
+            Set(gblFormMode, "New");
+            Navigate(scrLCForm, ScreenTransition.CoverRight)
+        OnSearchSubmit: =Navigate(scrSearch, ScreenTransition.None)
+
+    # -------------------------------------------------------------------------
+    # Scope toggle and freshness. A number with no timestamp is a number nobody trusts.
+    # -------------------------------------------------------------------------
+    btnScopeAll As button:
+        X: =ContentX
+        Y: =ThemeTopBarHeight + ThemeSpace4
+        Width: =110
+        Height: =30
+        Text: ="Whole book"
+        Fill: =If(!gblDashScopeMine, ThemeAccent, ThemeSurface)
+        Color: =If(!gblDashScopeMine, ThemeTextInverse, ThemeTextSecondary)
+        HoverFill: =If(!gblDashScopeMine, ThemeAccentHover, ThemeSurfaceHover)
+        BorderColor: =ThemeBorderStrong
+        BorderThickness: =1
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        RadiusTopLeft: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusTopRight: =0
+        RadiusBottomRight: =0
+        OnSelect: |
+            =Set(gblDashScopeMine, false);
+            ClearCollect(colMetrics, Filter('29_DashboardMetrics', MetricScope = "ALL"))
+
+    btnScopeMine As button:
+        X: =btnScopeAll.X + btnScopeAll.Width
+        Y: =btnScopeAll.Y
+        Width: =110
+        Height: =30
+        Text: ="My LCs"
+        Fill: =If(gblDashScopeMine, ThemeAccent, ThemeSurface)
+        Color: =If(gblDashScopeMine, ThemeTextInverse, ThemeTextSecondary)
+        HoverFill: =If(gblDashScopeMine, ThemeAccentHover, ThemeSurfaceHover)
+        BorderColor: =ThemeBorderStrong
+        BorderThickness: =1
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        RadiusTopLeft: =0
+        RadiusBottomLeft: =0
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        OnSelect: |
+            =Set(gblDashScopeMine, true);
+            ClearCollect(colMetrics, Filter('29_DashboardMetrics', MetricScope = User().Email))
+
+    lblFreshness As label:
+        X: =btnScopeMine.X + btnScopeMine.Width + ThemeSpace3
+        Y: =btnScopeAll.Y
+        Width: =320
+        Height: =30
+        Text: |
+            ="Figures as at " & Text(Max(colMetrics, ComputedAt), "dd mmm, HH:mm") &
+             If(gblMetricAge > 90, "  ·  stale", "")
+        Color: =If(gblMetricAge > 90, ThemeWarning, ThemeTextMuted)
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        VerticalAlign: =VerticalAlign.Middle
+        PaddingLeft: =0
+
+    btnRefreshMetrics As button:
+        X: =ContentX + ContentWidth - 110
+        Y: =btnScopeAll.Y
+        Width: =110
+        Height: =30
+        Text: ="Refresh"
+        Fill: =ThemeSurface
+        HoverFill: =ThemeSurfaceHover
+        Color: =ThemeAccent
+        BorderColor: =ThemeBorderStrong
+        BorderThickness: =1
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        # Triggers FLOW-11 on demand, then re-reads. The flow is idempotent, so a user
+        # leaning on this button costs one recompute, not one per click.
+        OnSelect: |
+            ='ExportLC-11-RecomputeDashboardMetrics'.Run(If(gblDashScopeMine, User().Email, "ALL"));
+            ClearCollect(colMetrics, Filter('29_DashboardMetrics', MetricScope = If(gblDashScopeMine, User().Email, "ALL")));
+            Notify("Dashboard figures refreshed.", NotificationType.Success, 2000)
+
+    # -------------------------------------------------------------------------
+    # KPI grid. Data-driven: the tiles, their order, their drill targets and their
+    # urgency all come from 29_DashboardMetrics, so adding a KPI is a list row.
+    # -------------------------------------------------------------------------
+    galKPI As gallery:
+        X: =ContentX
+        Y: =btnScopeAll.Y + btnScopeAll.Height + ThemeSpace3
+        Width: =ContentWidth
+        Height: =If(IsCompact, 4 * 116, 2 * 116)
+        Items: =SortByColumns(colMetrics, "SortOrder", SortOrder.Ascending)
+        Layout: =Layout.Horizontal
+        WrapCount: =If(IsCompact, 2, IsMedium, 4, 6)
+        TemplateSize: =(ContentWidth / If(IsCompact, 2, IsMedium, 4, 6))
+        TemplatePadding: =0
+        ShowScrollbar: =false
+        DelayItemLoading: =false
+
+        kpiCard As cmpKPICard:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth - ThemeSpace3
+            Height: =104
+            Caption: =ThisItem.MetricLabel
+            Value: |
+                =If(
+                    ThisItem.MetricGroup = "Exposure",
+                    MoneyShort(ThisItem.MetricAmount, ThisItem.MetricCurrency),
+                    Text(ThisItem.MetricCount, "[$-en-US]#,##0")
+                )
+            Sub: |
+                =If(
+                    ThisItem.MetricAmount > 0 && ThisItem.MetricGroup <> "Exposure",
+                    MoneyShort(ThisItem.MetricAmount, ThisItem.MetricCurrency) & " · " & ThisItem.MetricSubLabel,
+                    ThisItem.MetricSubLabel
+                )
+            Accent: |
+                =Switch(
+                    ThisItem.MetricGroup,
+                    "Deadlines",     If(ThisItem.IsUrgent, ThemeDanger, ThemeWarning),
+                    "Discrepancies", ThemeDanger,
+                    "Tasks",         If(ThisItem.IsUrgent, ThemeDanger, ThemeProgress),
+                    "Proceeds",      ThemeProgress,
+                    "Documents",     ThemeWarning,
+                    "Presentations", ThemeProgress,
+                    "Exposure",      ThemeSuccess,
+                    ThemeAccent
+                )
+            Urgent: =ThisItem.IsUrgent && ThisItem.MetricCount > 0
+            # Every card drills through. The target comes from the metric row, so a new
+            # KPI needs no code change here.
+            OnCardSelect: |
+                =Switch(
+                    ThisItem.DrillTarget,
+                    "OPEN_DISCREPANCIES", Navigate(scrDiscrepancies, ScreenTransition.None),
+                    "OUTSTANDING_PROCEEDS", Navigate(scrProceeds, ScreenTransition.None),
+                    "PROCEEDS_OVERDUE",
+                        (Set(gblProceedsPreset, "OVERDUE"); Navigate(scrProceeds, ScreenTransition.None)),
+                    "PENDING_PRESENTATIONS", Navigate(scrPresentations, ScreenTransition.None),
+                    "OVERDUE_TASKS",
+                        (Set(gblTaskPreset, "OVERDUE"); Navigate(scrTasks, ScreenTransition.None)),
+                    "TASKS_TODAY",
+                        (Set(gblTaskPreset, "TODAY"); Navigate(scrTasks, ScreenTransition.None)),
+                    "PENDING_AMENDMENTS",
+                        (Set(gblAmendmentPreset, "PENDING"); Navigate(scrAmendments, ScreenTransition.None)),
+                    // Everything else is a preset on the LC register. PresetFilter is the single
+                    // definition of what each preset means, shared with the register's own
+                    // preset chips - so the card and the register can never disagree.
+                    (
+                        Set(gblFilter, PresetFilter(ThisItem.DrillTarget, gblDashScopeMine));
+                        Navigate(scrLCRegister, ScreenTransition.None)
+                    )
+                )
+
+    # -------------------------------------------------------------------------
+    # Needs attention. The single most useful list on the screen: open LCs ordered by
+    # the deadline that bites first. Server-side filter and sort, capped at 25 rows.
+    # -------------------------------------------------------------------------
+    cardAttention As cmpSectionCard:
+        X: =ContentX
+        Y: =galKPI.Y + galKPI.Height + ThemeSpace4
+        Width: =If(IsMedium, ContentWidth, ContentWidth * 0.62 - ThemeSpace2)
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        HeaderText: ="Needs attention"
+        SubText: ="Open LCs closest to a deadline"
+        ActionLabel: ="Open register"
+        ShowAction: =true
+        OnAction: |
+            =Set(gblFilter, PresetFilter("ACTIVE", gblDashScopeMine));
+            Navigate(scrLCRegister, ScreenTransition.None)
+
+    galAttention As gallery:
+        X: =cardAttention.X + 1
+        Y: =cardAttention.Y + 64
+        Width: =cardAttention.Width - 2
+        Height: =cardAttention.Height - 70
+        TemplateSize: =58
+        TemplatePadding: =0
+        ShowScrollbar: =true
+        DelayItemLoading: =true
+        Items: |
+            =FirstN(
+                SortByColumns(
+                    Filter(
+                        '01_ExportLCs',
+                        IsClosed = false,
+                        ExpiryDate <= DateExpirySoon,
+                        If(gblDashScopeMine, ResponsibleOfficerEmail = User().Email, true)
+                    ),
+                    "ExpiryDate", SortOrder.Ascending
+                ),
+                25
+            )
+        OnSelect: |
+            =Set(gblCurrentLC, ThisItem);
+            Set(gblWorkspaceTab, "Overview");
+            Navigate(scrLCWorkspace, ScreenTransition.CoverRight)
+
+        recAttnRow As rectangle:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight - 1
+            Fill: =RGBA(0, 0, 0, 0)
+            # A hairline between rows, not a box around each one. Dense tables read better
+            # with rules than with cards.
+            BorderThickness: =0
+
+        recAttnRule As rectangle:
+            X: =ThemeSpace4
+            Y: =Parent.TemplateHeight - 1
+            Width: =Parent.TemplateWidth - (ThemeSpace4 * 2)
+            Height: =1
+            Fill: =ThemeBorder
+
+        lblAttnLC As label:
+            X: =ThemeSpace4
+            Y: =8
+            Width: =160
+            Height: =18
+            Text: =ThisItem.LCNumber
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeAccent
+            PaddingLeft: =0
+
+        lblAttnCustomer As label:
+            X: =ThemeSpace4
+            Y: =26
+            Width: =240
+            Height: =18
+            Text: =ThisItem.CustomerName
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            PaddingLeft: =0
+
+        lblAttnAmount As label:
+            X: =Parent.TemplateWidth - 350
+            Y: =8
+            Width: =130
+            Height: =18
+            Text: =MoneyShort(ThisItem.OutstandingAmount, ThisItem.CurrencyCode)
+            Align: =Align.Right
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeText
+            PaddingRight: =0
+
+        lblAttnAmountCaption As label:
+            X: =lblAttnAmount.X
+            Y: =26
+            Width: =130
+            Height: =16
+            Text: ="outstanding"
+            Align: =Align.Right
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: =ThemeTextMuted
+            PaddingRight: =0
+
+        lblAttnDeadline As label:
+            X: =Parent.TemplateWidth - 210
+            Y: =8
+            Width: =110
+            Height: =18
+            Text: ="Expires " & DaysPhrase(ThisItem.ExpiryDate)
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: =FontWeight.Semibold
+            Color: =UrgencyColor(ThisItem.ExpiryDate)
+            PaddingLeft: =0
+
+        lblAttnFlags As label:
+            X: =Parent.TemplateWidth - 210
+            Y: =26
+            Width: =110
+            Height: =16
+            # Compact secondary signal: what else is wrong with this LC right now.
+            Text: |
+                =Concat(
+                    Filter(
+                        Table(
+                            { T: If(ThisItem.OpenDiscrepancyCount > 0, ThisItem.OpenDiscrepancyCount & " disc.", "") },
+                            { T: If(ThisItem.MissingDocumentCount > 0, ThisItem.MissingDocumentCount & " docs", "") }
+                        ),
+                        Len(T) > 0
+                    ),
+                    T, " · "
+                )
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: =ThemeDanger
+            PaddingLeft: =0
+
+        badgeAttn As cmpStatusBadge:
+            X: =Parent.TemplateWidth - 96 - ThemeSpace4
+            Y: =17
+            Width: =96
+            Height: =24
+            Entity: ="ExportLC"
+            StatusCode: =ThisItem.LCStatus
+            BadgeWidth: =96
+
+    emptyAttention As cmpEmptyState:
+        X: =cardAttention.X
+        Y: =cardAttention.Y + 80
+        Width: =cardAttention.Width
+        Height: =160
+        Visible: =IsEmpty(galAttention.AllItems)
+        Title: ="Nothing needs attention"
+        Body: ="No open LC is within " & WinExpiringSoon & " days of expiry" & If(gblDashScopeMine, " in your portfolio.", ".")
+        ActionLabel: ="View all open LCs"
+        OnAction: |
+            =Set(gblFilter, PresetFilter("ACTIVE", gblDashScopeMine));
+            Navigate(scrLCRegister, ScreenTransition.None)
+
+    # -------------------------------------------------------------------------
+    # Recent activity, straight from the audit trail. Partition-filtered so it stays
+    # a cheap indexed query as history grows.
+    # -------------------------------------------------------------------------
+    cardActivity As cmpSectionCard:
+        X: =cardAttention.X + cardAttention.Width + ThemeSpace4
+        Y: =cardAttention.Y
+        Width: =ContentWidth * 0.38 - ThemeSpace2
+        Height: =cardAttention.Height
+        Visible: =!IsMedium
+        HeaderText: ="Recent activity"
+        SubText: ="Last changes across the portfolio"
+        ActionLabel: ="Full audit"
+        ShowAction: =IsManager
+        OnAction: |
+            =Set(gblAdminTab, "Audit");
+            Navigate(scrAdmin, ScreenTransition.None)
+
+    galActivity As gallery:
+        X: =cardActivity.X + 1
+        Y: =cardActivity.Y + 64
+        Width: =cardActivity.Width - 2
+        Height: =cardActivity.Height - 70
+        Visible: =cardActivity.Visible
+        TemplateSize: =56
+        TemplatePadding: =0
+        DelayItemLoading: =true
+        Items: |
+            =FirstN(
+                SortByColumns(
+                    Filter('10_AuditLog', PartitionKey = AuditPartitionNow),
+                    "ActionTimestamp", SortOrder.Descending
+                ),
+                30
+            )
+
+        icoAct As icon:
+            Icon: |
+                =Switch(ThisItem.ActionType,
+                    "Create", Icon.Add, "Delete", Icon.Trash,
+                    "Status Change", Icon.Sync, "Amount Change", Icon.Currency,
+                    "Document Upload", Icon.Publish, "Approval Decision", Icon.CheckBadge,
+                    Icon.Edit)
+            X: =ThemeSpace4
+            Y: =18
+            Width: =16
+            Height: =16
+            Color: |
+                =Switch(ThisItem.ActionType,
+                    "Delete", ThemeDanger, "Create", ThemeSuccess,
+                    "Approval Decision", ThemeAccent, ThemeTextMuted)
+
+        lblActMain As label:
+            X: =ThemeSpace4 + 24
+            Y: =8
+            Width: =Parent.TemplateWidth - ThemeSpace4 - 32
+            Height: =18
+            Text: =ThisItem.RecordReference & " · " & ThisItem.ActionType
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeText
+            PaddingLeft: =0
+
+        lblActDetail As label:
+            X: =ThemeSpace4 + 24
+            Y: =25
+            Width: =Parent.TemplateWidth - ThemeSpace4 - 32
+            Height: =16
+            Text: |
+                =If(
+                    Len(ThisItem.FieldName) > 0,
+                    ThisItem.FieldName & ": " & Left(Coalesce(ThisItem.OldValue, "-"), 18) & " to " & Left(Coalesce(ThisItem.NewValue, "-"), 18),
+                    Coalesce(ThisItem.ActionComment, "")
+                )
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: =ThemeTextSecondary
+            PaddingLeft: =0
+
+        lblActWho As label:
+            X: =ThemeSpace4 + 24
+            Y: =39
+            Width: =Parent.TemplateWidth - ThemeSpace4 - 32
+            Height: =14
+            Text: =ThisItem.ActionByName & " · " & Text(ThisItem.ActionTimestamp, "dd mmm HH:mm")
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: =ThemeTextMuted
+            PaddingLeft: =0
+
+        recActRule As rectangle:
+            X: =ThemeSpace4
+            Y: =Parent.TemplateHeight - 1
+            Width: =Parent.TemplateWidth - (ThemeSpace4 * 2)
+            Height: =1
+            Fill: =ThemeBorder

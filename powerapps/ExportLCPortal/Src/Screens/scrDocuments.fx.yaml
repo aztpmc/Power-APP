@@ -1,0 +1,413 @@
+# =============================================================================
+# scrDocuments - the Document Centre
+# =============================================================================
+# Documents are not files in a folder; they are files attached to a business record.
+# Every item in the four libraries carries LCNumber, InternalLCID, document type and,
+# where relevant, invoice / shipment / presentation references. That metadata is what
+# makes this screen a document centre rather than a file browser.
+#
+# Routing: which library a file lands in is decided by 15_DocumentTypes.TargetLibrary,
+# not by the user and not by code here. Change the routing rule in the master list and
+# the next upload follows it.
+#
+# Delegation: SharePoint document libraries delegate the same predicates as lists.
+# LCNumber and DocumentTypeCode are indexed on all four libraries.
+# =============================================================================
+
+scrDocuments As screen:
+    Fill: =ThemeCanvas
+    OnVisible: |
+        =Set(gblNavSection, "DOCS");
+        If(IsBlank(gblDocLibrary), Set(gblDocLibrary, "ExportLCDocuments"));
+        Set(gblDocSearch, "");
+        Set(gblDocType, "")
+
+    navRail As cmpNavRail:
+        X: =0
+        Y: =0
+        Width: =RailWidth
+        Height: =Parent.Height
+        ActiveKey: ="DOCS"
+        UserName: =gblUserName
+        RoleLabel: |
+            =Switch(gblRole, "ADMIN", "Administrator", "MANAGER", "Treasury Manager",
+                "OFFICER", "Treasury Officer", "REVIEWER", "Reviewer", "Read only")
+        OnNavigate: |
+            =Switch(
+                gblNavSection,
+                "HOME",      Navigate(scrDashboard, ScreenTransition.None),
+                "LCS",       Navigate(scrLCRegister, ScreenTransition.None),
+                "INVOICES",  Navigate(scrInvoices, ScreenTransition.None),
+                "SHIPMENTS", Navigate(scrShipments, ScreenTransition.None),
+                "PRESENT",   Navigate(scrPresentations, ScreenTransition.None),
+                "DOCS",      Navigate(scrDocuments, ScreenTransition.None),
+                "DISCREP",   Navigate(scrDiscrepancies, ScreenTransition.None),
+                "PROCEEDS",  Navigate(scrProceeds, ScreenTransition.None),
+                "CORRESP",   Navigate(scrCorrespondence, ScreenTransition.None),
+                "TASKS",     Navigate(scrTasks, ScreenTransition.None),
+                "REPORTS",   Navigate(scrReports, ScreenTransition.None),
+                "ADMIN",     Navigate(scrAdmin, ScreenTransition.None)
+            )
+
+    topBar As cmpTopBar:
+        X: =ContentX
+        Y: =0
+        Width: =ContentWidth
+        Height: =ThemeTopBarHeight
+        TitleText: ="Document Centre"
+        Breadcrumb: ="Documents  ·  " & gblDocLibrary
+        ShowSearch: =false
+        ShowPrimary: =IsOfficer
+        PrimaryLabel: ="Upload"
+        OnPrimary: |
+            =Set(gblUploadContext, Blank());
+            Navigate(scrDocumentUpload, ScreenTransition.CoverRight)
+
+    galLibraries As gallery:
+        X: =ContentX
+        Y: =ThemeTopBarHeight + ThemeSpace3
+        Width: =ContentWidth - 420
+        Height: =32
+        Layout: =Layout.Horizontal
+        TemplateSize: =190
+        TemplatePadding: =0
+        ShowScrollbar: =false
+        DelayItemLoading: =false
+        Items: |
+            =Table(
+                { Key: "ExportLCDocuments",          Label: "LC documents" },
+                { Key: "ExportLCInvoices",           Label: "Invoices" },
+                { Key: "ExportLCShippingDocuments",  Label: "Shipping documents" },
+                { Key: "ExportLCBankCorrespondence", Label: "Bank correspondence" }
+            )
+
+        btnLib As button:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth - ThemeSpace2
+            Height: =30
+            Text: =ThisItem.Label
+            Fill: =If(gblDocLibrary = ThisItem.Key, ThemeAccentSoft, ThemeSurface)
+            HoverFill: =ThemeSurfaceHover
+            Color: =If(gblDocLibrary = ThisItem.Key, ThemeAccent, ThemeTextSecondary)
+            BorderColor: =If(gblDocLibrary = ThisItem.Key, ThemeAccent, ThemeBorderStrong)
+            BorderThickness: =1
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: |
+                =If(gblDocLibrary = ThisItem.Key, FontWeight.Semibold, FontWeight.Normal)
+            RadiusTopLeft: =15
+            RadiusTopRight: =15
+            RadiusBottomLeft: =15
+            RadiusBottomRight: =15
+            OnSelect: =Set(gblDocLibrary, ThisItem.Key)
+
+    cboDocType As combobox:
+        X: =ContentX + ContentWidth - 410
+        Y: =ThemeTopBarHeight + ThemeSpace3
+        Width: =200
+        Height: =30
+        Items: |
+            =SortByColumns(
+                Filter(colDocTypes, TargetLibrary = gblDocLibrary),
+                "SortOrder", SortOrder.Ascending
+            )
+        DisplayFields: =["Title"]
+        SearchFields: =["Title", "DocumentTypeCode"]
+        IsSearchable: =true
+        SelectMultiple: =false
+        InputTextPlaceholder: ="Document type"
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        OnChange: =Set(gblDocType, Coalesce(Self.Selected.DocumentTypeCode, ""))
+
+    txtDocSearch As text:
+        X: =ContentX + ContentWidth - 200
+        Y: =ThemeTopBarHeight + ThemeSpace3
+        Width: =200
+        Height: =30
+        HintText: ="LC number or file name"
+        DelayOutput: =true
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        BorderColor: =ThemeBorderStrong
+        FocusedBorderColor: =ThemeAccent
+        BorderThickness: =1
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        OnChange: =Set(gblDocSearch, Self.Value)
+
+    recDocHeader As rectangle:
+        X: =ContentX
+        Y: =galLibraries.Y + galLibraries.Height + ThemeSpace3
+        Width: =ContentWidth
+        Height: =34
+        Fill: =ThemeSurfaceAlt
+        BorderColor: =ThemeBorder
+        BorderThickness: =1
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+
+    lblDocH1 As label:
+        X: =recDocHeader.X + ThemeSpace4
+        Y: =recDocHeader.Y
+        Width: =ContentWidth * 0.30
+        Height: =34
+        Text: ="File"
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        FontWeight: =FontWeight.Semibold
+        Color: =ThemeTextSecondary
+        VerticalAlign: =VerticalAlign.Middle
+        PaddingLeft: =0
+
+    lblDocH2 As label:
+        X: =lblDocH1.X + lblDocH1.Width
+        Y: =recDocHeader.Y
+        Width: =ContentWidth * 0.14
+        Height: =34
+        Text: ="LC Number"
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        FontWeight: =FontWeight.Semibold
+        Color: =ThemeTextSecondary
+        VerticalAlign: =VerticalAlign.Middle
+        PaddingLeft: =0
+
+    lblDocH3 As label:
+        X: =lblDocH2.X + lblDocH2.Width
+        Y: =recDocHeader.Y
+        Width: =ContentWidth * 0.16
+        Height: =34
+        Text: ="Document type"
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        FontWeight: =FontWeight.Semibold
+        Color: =ThemeTextSecondary
+        VerticalAlign: =VerticalAlign.Middle
+        PaddingLeft: =0
+
+    lblDocH4 As label:
+        X: =lblDocH3.X + lblDocH3.Width
+        Y: =recDocHeader.Y
+        Width: =ContentWidth * 0.14
+        Height: =34
+        Text: ="Linked to"
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        FontWeight: =FontWeight.Semibold
+        Color: =ThemeTextSecondary
+        VerticalAlign: =VerticalAlign.Middle
+        PaddingLeft: =0
+
+    lblDocH5 As label:
+        X: =lblDocH4.X + lblDocH4.Width
+        Y: =recDocHeader.Y
+        Width: =ContentWidth * 0.12
+        Height: =34
+        Text: ="Uploaded"
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        FontWeight: =FontWeight.Semibold
+        Color: =ThemeTextSecondary
+        VerticalAlign: =VerticalAlign.Middle
+        PaddingLeft: =0
+
+    galDocuments As gallery:
+        X: =ContentX
+        Y: =recDocHeader.Y + recDocHeader.Height
+        Width: =ContentWidth
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        TemplateSize: =48
+        TemplatePadding: =0
+        ShowScrollbar: =true
+        DelayItemLoading: =true
+        LoadingSpinner: =LoadingSpinner.Data
+        # One branch per library because a document library is its own datasource in
+        # Power Fx. Each branch is the same delegable shape.
+        Items: |
+            =FirstN(
+                Switch(
+                    gblDocLibrary,
+                    "ExportLCInvoices",
+                        SortByColumns(
+                            Filter(
+                                ExportLCInvoices,
+                                StartsWith(LCNumber, gblDocSearch) || StartsWith('Name', gblDocSearch),
+                                StartsWith(DocumentTypeCode, gblDocType)
+                            ),
+                            "Modified", SortOrder.Descending
+                        ),
+                    "ExportLCShippingDocuments",
+                        SortByColumns(
+                            Filter(
+                                ExportLCShippingDocuments,
+                                StartsWith(LCNumber, gblDocSearch) || StartsWith('Name', gblDocSearch),
+                                StartsWith(DocumentTypeCode, gblDocType)
+                            ),
+                            "Modified", SortOrder.Descending
+                        ),
+                    "ExportLCBankCorrespondence",
+                        SortByColumns(
+                            Filter(
+                                ExportLCBankCorrespondence,
+                                StartsWith(LCNumber, gblDocSearch) || StartsWith('Name', gblDocSearch),
+                                StartsWith(DocumentTypeCode, gblDocType)
+                            ),
+                            "Modified", SortOrder.Descending
+                        ),
+                    SortByColumns(
+                        Filter(
+                            ExportLCDocuments,
+                            StartsWith(LCNumber, gblDocSearch) || StartsWith('Name', gblDocSearch),
+                            StartsWith(DocumentTypeCode, gblDocType)
+                        ),
+                        "Modified", SortOrder.Descending
+                    )
+                ),
+                RegisterPageSize
+            )
+        # Opening a document opens the file in SharePoint rather than trying to render it
+        # in the app: version history, co-authoring and the Office apps all keep working.
+        OnSelect: =Launch(ThisItem.'Link to item', {}, LaunchTarget.New)
+
+        recDocBg As rectangle:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight - 1
+            Fill: =ThemeSurface
+
+        recDocRule As rectangle:
+            X: =0
+            Y: =Parent.TemplateHeight - 1
+            Width: =Parent.TemplateWidth
+            Height: =1
+            Fill: =ThemeBorder
+
+        icoDoc As icon:
+            Icon: =Icon.Document
+            X: =ThemeSpace4
+            Y: =15
+            Width: =18
+            Height: =18
+            Color: =ThemeTextMuted
+
+        lblDocName As label:
+            X: =ThemeSpace4 + 26
+            Y: =6
+            Width: =Parent.TemplateWidth * 0.30 - 26
+            Height: =20
+            Text: =ThisItem.'Name'
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeAccent
+            PaddingLeft: =0
+
+        lblDocMeta As label:
+            X: =ThemeSpace4 + 26
+            Y: =25
+            Width: =Parent.TemplateWidth * 0.30 - 26
+            Height: =16
+            Text: |
+                =If(ThisItem.IsOriginal, "Original", "Copy") &
+                 If(!IsBlank(ThisItem.DocVersionLabel), " · v" & ThisItem.DocVersionLabel, "")
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: =ThemeTextMuted
+            PaddingLeft: =0
+
+        lblDocLC As label:
+            X: =Parent.TemplateWidth * 0.30 + ThemeSpace4
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.14
+            Height: =Parent.TemplateHeight
+            Text: =Coalesce(ThisItem.LCNumber, "-")
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblDocType As label:
+            X: =Parent.TemplateWidth * 0.44 + ThemeSpace4
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.16
+            Height: =Parent.TemplateHeight
+            Text: |
+                =Coalesce(
+                    LookUp(colDocTypes, DocumentTypeCode = ThisItem.DocumentTypeCode).Title,
+                    Coalesce(ThisItem.DocumentTypeCode, "-")
+                )
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeText
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblDocLinked As label:
+            X: =Parent.TemplateWidth * 0.60 + ThemeSpace4
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.14
+            Height: =Parent.TemplateHeight
+            # Shows the most specific business record this file belongs to.
+            Text: |
+                =Coalesce(
+                    If(!IsBlank(ThisItem.PresentationNumber), "Presentation " & ThisItem.PresentationNumber, Blank()),
+                    If(!IsBlank(ThisItem.InvoiceNumber), "Invoice " & ThisItem.InvoiceNumber, Blank()),
+                    "LC level"
+                )
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextMuted
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblDocWhen As label:
+            X: =Parent.TemplateWidth * 0.74 + ThemeSpace4
+            Y: =6
+            Width: =Parent.TemplateWidth * 0.12
+            Height: =20
+            Text: =Text(ThisItem.Modified, "dd mmm yyyy")
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            PaddingLeft: =0
+
+        lblDocWho As label:
+            X: =Parent.TemplateWidth * 0.74 + ThemeSpace4
+            Y: =25
+            Width: =Parent.TemplateWidth * 0.12
+            Height: =16
+            Text: =Coalesce(ThisItem.'Modified By'.DisplayName, "")
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: =ThemeTextMuted
+            PaddingLeft: =0
+
+        badgeDoc As cmpStatusBadge:
+            X: =Parent.TemplateWidth - 130 - ThemeSpace4
+            Y: =12
+            Width: =130
+            Height: =24
+            Entity: ="Document"
+            StatusCode: =Coalesce(ThisItem.DocStatus, "Received")
+            BadgeWidth: =130
+
+    emptyDocs As cmpEmptyState:
+        X: =ContentX
+        Y: =galDocuments.Y + 30
+        Width: =ContentWidth
+        Height: =180
+        Visible: =IsEmpty(galDocuments.AllItems)
+        Title: ="No documents in this library"
+        Body: ="Nothing matches the current library, type and search. Documents uploaded from an LC workspace are routed here automatically by document type."
+        ActionLabel: ="Clear filters"
+        OnAction: |
+            =Set(gblDocSearch, "");
+            Set(gblDocType, "");
+            Reset(txtDocSearch);
+            Reset(cboDocType)

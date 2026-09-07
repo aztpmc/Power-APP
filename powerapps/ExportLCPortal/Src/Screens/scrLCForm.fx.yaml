@@ -1,0 +1,662 @@
+# =============================================================================
+# scrLCForm - register or edit an Export LC
+# =============================================================================
+# This is where section 34 (validation) and section 35 (controlled transitions) are
+# actually enforced, and where the audit trail is written.
+#
+# Validation runs in one place, ValidationErrors, which returns a table of messages.
+# The Save button is disabled while that table is non-empty and the messages are shown
+# inline, so a user is never allowed to save a record that then fails silently at the
+# SharePoint layer.
+#
+# On save the screen:
+#   1. Re-checks for a duplicate LC number (server-side, delegable LookUp).
+#   2. Blocks an illegal status transition using CanTransition().
+#   3. Recomputes the derived amounts rather than trusting typed values.
+#   4. Patches the LC.
+#   5. Writes one audit row per changed critical field, all under one correlation id.
+#   6. On a new LC, materialises the document checklist from 19_DocChecklistTemplates.
+# =============================================================================
+
+scrLCForm As screen:
+    Fill: =ThemeCanvas
+    OnVisible: |
+        =Set(gblCorrelation, GUID());
+        // The working copy. Editing a record variable rather than binding controls
+        // straight to the datasource means validation can see the whole prospective
+        // record before anything is written.
+        Set(
+            gblDraft,
+            If(
+                gblFormMode = "New",
+                {
+                    Title: "",
+                    LCNumber: "", OurReference: "",
+                    CustomerName: "", CustomerCode: "", CountryName: "",
+                    ApplicantName: "", BeneficiaryName: "",
+                    IssuingBankName: "", AdvisingBankName: "", ConfirmingBankName: "", ReimbursingBankName: "",
+                    LCTypeCode: "", SightOrDeferred: "Deferred", AvailableBy: "Deferred Payment",
+                    PaymentTermCode: "", PaymentTermText: "",
+                    PartialShipments: "Allowed", Transshipment: "Allowed",
+                    PresentationPeriodDays: CfgN("DefaultPresentationPeriodDays", 21),
+                    IsIrrevocable: true, IsTransferable: false, IsRevolving: false, IsConfirmed: false,
+                    CurrencyCode: BaseCurrency,
+                    LCAmount: Blank(), TolerancePlus: 0, ToleranceMinus: 0,
+                    ReceivedDate: Today0, IssuanceDate: Blank(), AdviceDate: Blank(),
+                    LatestShipmentDate: Blank(), ExpiryDate: Blank(), ExpiryPlace: "",
+                    IncotermCode: "", PortOfLoading: "", PortOfDischarge: "", FinalDestination: "",
+                    GoodsDescription: "", HSCode: "", PurchaseOrder: "", SalesContract: "",
+                    LCStatus: "Draft"
+                },
+                gblEditLC
+            )
+        );
+        Set(gblOriginal, gblEditLC);
+        Set(gblShowErrors, false)
+
+    # -------------------------------------------------------------------------
+    # Validation. One expression, every rule from section 34, each with a message a
+    # treasury officer can act on rather than a generic "invalid input".
+    # -------------------------------------------------------------------------
+    lblValidationSource As label:
+        X: =-1000
+        Y: =-1000
+        Width: =1
+        Height: =1
+        Visible: =false
+        # Held on a hidden label so every control on the screen can reference one
+        # evaluation of the rule set instead of each re-deriving it.
+        Text: |
+            =Concat(
+                Filter(
+                    Table(
+                        { M: "LC number is required.",
+                          F: Len(Trim(gblDraft.LCNumber)) = 0 },
+                        { M: "Customer is required.",
+                          F: Len(Trim(gblDraft.CustomerName)) = 0 },
+                        { M: "Currency is required.",
+                          F: Len(Trim(gblDraft.CurrencyCode)) = 0 },
+                        { M: "LC amount is required.",
+                          F: IsBlank(gblDraft.LCAmount) },
+                        { M: "LC amount cannot be negative.",
+                          F: Coalesce(gblDraft.LCAmount, 0) < 0 },
+                        { M: "Expiry date is required.",
+                          F: IsBlank(gblDraft.ExpiryDate) },
+                        { M: "Expiry date cannot be before the issuance date.",
+                          F: !IsBlank(gblDraft.ExpiryDate) && !IsBlank(gblDraft.IssuanceDate) &&
+                             gblDraft.ExpiryDate < gblDraft.IssuanceDate },
+                        { M: "Expiry date cannot be before the received date.",
+                          F: !IsBlank(gblDraft.ExpiryDate) && !IsBlank(gblDraft.ReceivedDate) &&
+                             gblDraft.ExpiryDate < gblDraft.ReceivedDate },
+                        { M: "Latest shipment date cannot be after LC expiry - documents could never be presented in time.",
+                          F: !CfgB("AllowShipmentDateAfterExpiry", false) &&
+                             !IsBlank(gblDraft.LatestShipmentDate) && !IsBlank(gblDraft.ExpiryDate) &&
+                             gblDraft.LatestShipmentDate > gblDraft.ExpiryDate },
+                        { M: "Latest shipment date cannot be before the issuance date.",
+                          F: !IsBlank(gblDraft.LatestShipmentDate) && !IsBlank(gblDraft.IssuanceDate) &&
+                             gblDraft.LatestShipmentDate < gblDraft.IssuanceDate },
+                        { M: "Tolerance must be between 0 and 100 percent.",
+                          F: Coalesce(gblDraft.TolerancePlus, 0) < 0 || Coalesce(gblDraft.TolerancePlus, 0) > 100 ||
+                             Coalesce(gblDraft.ToleranceMinus, 0) < 0 || Coalesce(gblDraft.ToleranceMinus, 0) > 100 },
+                        { M: "Presentation period must be between 1 and 60 days.",
+                          F: Coalesce(gblDraft.PresentationPeriodDays, 21) < 1 ||
+                             Coalesce(gblDraft.PresentationPeriodDays, 21) > 60 },
+                        { M: "Goods description is required before this LC can leave Draft.",
+                          F: CfgB("RequireGoodsDescription", false) && gblDraft.LCStatus <> "Draft" &&
+                             Len(Trim(Coalesce(gblDraft.GoodsDescription, ""))) = 0 },
+                        { M: "Issuing bank is required once the LC is past Draft.",
+                          F: gblDraft.LCStatus <> "Draft" && Len(Trim(Coalesce(gblDraft.IssuingBankName, ""))) = 0 },
+                        // Duplicate check runs server-side against the indexed LCNumber column.
+                        { M: "An LC with this number already exists in the register.",
+                          F: CfgB("DuplicateLCNumberCheck", true) && Len(Trim(gblDraft.LCNumber)) > 0 &&
+                             !IsBlank(
+                                LookUp(
+                                    '01_ExportLCs',
+                                    LCNumber = gblDraft.LCNumber && ID <> Coalesce(gblOriginal.ID, -1)
+                                )
+                             ) },
+                        // Reducing an LC below what has already been drawn needs an amendment first.
+                        { M: "LC amount is below the amount already utilised. Record an amendment instead of editing the amount directly.",
+                          F: gblFormMode = "Edit" && !IsBlank(gblDraft.LCAmount) &&
+                             gblDraft.LCAmount < Coalesce(gblOriginal.UtilizedAmount, 0) },
+                        // The transition gate from 16_StatusMaster.
+                        { M: TransitionBlockReason("ExportLC", Coalesce(gblOriginal.LCStatus, "Draft"), gblDraft.LCStatus),
+                          F: gblFormMode = "Edit" &&
+                             !CanTransition("ExportLC", Coalesce(gblOriginal.LCStatus, "Draft"), gblDraft.LCStatus) }
+                    ),
+                    F
+                ),
+                M,
+                Char(10)
+            )
+
+    topBar As cmpTopBar:
+        X: =ThemeSpace5
+        Y: =0
+        Width: =Parent.Width - (ThemeSpace5 * 2)
+        Height: =ThemeTopBarHeight
+        TitleText: =If(gblFormMode = "New", "Register Export LC", "Edit " & gblDraft.LCNumber)
+        Breadcrumb: |
+            ="Export LCs  /  " & If(gblFormMode = "New", "New registration", gblDraft.Title)
+        ShowSearch: =false
+        ShowBack: =true
+        OnBack: =Back()
+        ShowPrimary: =false
+
+    # -------------------------------------------------------------------------
+    # Error panel. Visible only after a save attempt, so a half-typed form is not
+    # covered in red before the user has finished.
+    # -------------------------------------------------------------------------
+    recErrors As rectangle:
+        X: =ThemeSpace5
+        Y: =ThemeTopBarHeight + ThemeSpace3
+        Width: =Parent.Width - (ThemeSpace5 * 2)
+        Height: =lblErrors.Height + ThemeSpace4
+        Fill: =ThemeDangerSoft
+        BorderColor: =ThemeDanger
+        BorderThickness: =1
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        Visible: =gblShowErrors && Len(lblValidationSource.Text) > 0
+
+    lblErrors As label:
+        X: =recErrors.X + ThemeSpace4
+        Y: =recErrors.Y + ThemeSpace2
+        Width: =recErrors.Width - (ThemeSpace4 * 2)
+        Height: |
+            =(CountRows(Split(lblValidationSource.Text, Char(10))) * 20) + 8
+        Text: =lblValidationSource.Text
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        Color: =ThemeDanger
+        Visible: =recErrors.Visible
+        PaddingLeft: =0
+
+    # -------------------------------------------------------------------------
+    # Form body. Grouped exactly like the LC Details tab so the read view and the
+    # edit view have the same shape - one of the cheapest ways to make a portal
+    # feel coherent.
+    # -------------------------------------------------------------------------
+    scrollForm As gallery:
+        X: =ThemeSpace5
+        Y: =If(recErrors.Visible, recErrors.Y + recErrors.Height + ThemeSpace3, ThemeTopBarHeight + ThemeSpace3)
+        Width: =Parent.Width - (ThemeSpace5 * 2)
+        Height: =Parent.Height - Self.Y - 72
+        TemplateSize: =64
+        TemplatePadding: =0
+        ShowScrollbar: =true
+        DelayItemLoading: =false
+        WrapCount: =If(IsCompact, 1, 3)
+        # The form is described as data. A new field is a row here, not a new control,
+        # a new label, a new Y calculation and four things to keep aligned.
+        Items: |
+            =Table(
+                { K: "LCNumber",     L: "LC number *",            T: "text",   O: "" },
+                { K: "OurReference", L: "Our reference",          T: "text",   O: "" },
+                { K: "CustomerName", L: "Customer *",             T: "lookup", O: "customer" },
+                { K: "ApplicantName", L: "Applicant",             T: "text",   O: "" },
+                { K: "BeneficiaryName", L: "Beneficiary",         T: "text",   O: "" },
+                { K: "IssuingBankName", L: "Issuing bank",        T: "lookup", O: "issuingbank" },
+                { K: "AdvisingBankName", L: "Advising bank",      T: "lookup", O: "advisingbank" },
+                { K: "ConfirmingBankName", L: "Confirming bank",  T: "text",   O: "" },
+                { K: "LCTypeCode",   L: "LC type",                T: "lookup", O: "lctype" },
+                { K: "SightOrDeferred", L: "Sight / deferred",    T: "choice", O: "Sight,Deferred,Usance,Mixed" },
+                { K: "PaymentTermText", L: "Payment terms",       T: "lookup", O: "paymentterm" },
+                { K: "PresentationPeriodDays", L: "Presentation period (days)", T: "number", O: "" },
+                { K: "CurrencyCode", L: "Currency *",             T: "lookup", O: "currency" },
+                { K: "LCAmount",     L: "LC amount *",            T: "number", O: "" },
+                { K: "TolerancePlus", L: "Tolerance + (%)",       T: "number", O: "" },
+                { K: "ToleranceMinus", L: "Tolerance - (%)",      T: "number", O: "" },
+                { K: "ReceivedDate", L: "Received date",          T: "date",   O: "" },
+                { K: "IssuanceDate", L: "Issuance date",          T: "date",   O: "" },
+                { K: "AdviceDate",   L: "Advice date",            T: "date",   O: "" },
+                { K: "LatestShipmentDate", L: "Latest shipment date", T: "date", O: "" },
+                { K: "ExpiryDate",   L: "Expiry date *",          T: "date",   O: "" },
+                { K: "ExpiryPlace",  L: "Place of expiry",        T: "text",   O: "" },
+                { K: "IncotermCode", L: "Incoterm",               T: "lookup", O: "incoterm" },
+                { K: "PortOfLoading", L: "Port of loading",       T: "lookup", O: "port" },
+                { K: "PortOfDischarge", L: "Port of discharge",   T: "lookup", O: "port" },
+                { K: "FinalDestination", L: "Final destination",  T: "text",   O: "" },
+                { K: "PurchaseOrder", L: "Purchase order",        T: "text",   O: "" },
+                { K: "SalesContract", L: "Sales contract",        T: "text",   O: "" },
+                { K: "HSCode",       L: "HS code",                T: "text",   O: "" },
+                { K: "GoodsDescription", L: "Goods description",  T: "text",   O: "" }
+            )
+
+        lblFieldLabel As label:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth - ThemeSpace4
+            Height: =18
+            Text: =ThisItem.L
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            PaddingLeft: =0
+
+        txtFieldText As text:
+            X: =0
+            Y: =18
+            Width: =Parent.TemplateWidth - ThemeSpace4
+            Height: =32
+            Visible: =ThisItem.T in ["text", "number"]
+            Format: =If(ThisItem.T = "number", TextFormat.Number, TextFormat.Text)
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            BorderColor: =ThemeBorderStrong
+            FocusedBorderColor: =ThemeAccent
+            BorderThickness: =1
+            RadiusTopLeft: =4
+            RadiusTopRight: =4
+            RadiusBottomLeft: =4
+            RadiusBottomRight: =4
+            # A single Default that reads whichever draft field this row represents.
+            Default: |
+                =Switch(
+                    ThisItem.K,
+                    "LCNumber", gblDraft.LCNumber,
+                    "OurReference", gblDraft.OurReference,
+                    "ApplicantName", gblDraft.ApplicantName,
+                    "BeneficiaryName", gblDraft.BeneficiaryName,
+                    "ConfirmingBankName", gblDraft.ConfirmingBankName,
+                    "ExpiryPlace", gblDraft.ExpiryPlace,
+                    "FinalDestination", gblDraft.FinalDestination,
+                    "PurchaseOrder", gblDraft.PurchaseOrder,
+                    "SalesContract", gblDraft.SalesContract,
+                    "HSCode", gblDraft.HSCode,
+                    "GoodsDescription", gblDraft.GoodsDescription,
+                    "LCAmount", Text(gblDraft.LCAmount),
+                    "TolerancePlus", Text(gblDraft.TolerancePlus),
+                    "ToleranceMinus", Text(gblDraft.ToleranceMinus),
+                    "PresentationPeriodDays", Text(gblDraft.PresentationPeriodDays),
+                    ""
+                )
+            OnChange: |
+                =Set(
+                    gblDraft,
+                    Switch(
+                        ThisItem.K,
+                        "LCNumber", Patch(gblDraft, { LCNumber: Trim(Self.Value) }),
+                        "OurReference", Patch(gblDraft, { OurReference: Trim(Self.Value) }),
+                        "ApplicantName", Patch(gblDraft, { ApplicantName: Trim(Self.Value) }),
+                        "BeneficiaryName", Patch(gblDraft, { BeneficiaryName: Trim(Self.Value) }),
+                        "ConfirmingBankName", Patch(gblDraft, { ConfirmingBankName: Trim(Self.Value) }),
+                        "ExpiryPlace", Patch(gblDraft, { ExpiryPlace: Trim(Self.Value) }),
+                        "FinalDestination", Patch(gblDraft, { FinalDestination: Trim(Self.Value) }),
+                        "PurchaseOrder", Patch(gblDraft, { PurchaseOrder: Trim(Self.Value) }),
+                        "SalesContract", Patch(gblDraft, { SalesContract: Trim(Self.Value) }),
+                        "HSCode", Patch(gblDraft, { HSCode: Trim(Self.Value) }),
+                        "GoodsDescription", Patch(gblDraft, { GoodsDescription: Self.Value }),
+                        "LCAmount", Patch(gblDraft, { LCAmount: Value(Self.Value) }),
+                        "TolerancePlus", Patch(gblDraft, { TolerancePlus: Value(Self.Value) }),
+                        "ToleranceMinus", Patch(gblDraft, { ToleranceMinus: Value(Self.Value) }),
+                        "PresentationPeriodDays", Patch(gblDraft, { PresentationPeriodDays: Value(Self.Value) }),
+                        gblDraft
+                    )
+                )
+
+        dpFieldDate As datepicker:
+            X: =0
+            Y: =18
+            Width: =Parent.TemplateWidth - ThemeSpace4
+            Height: =32
+            Visible: =ThisItem.T = "date"
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            DefaultDate: |
+                =Switch(
+                    ThisItem.K,
+                    "ReceivedDate", gblDraft.ReceivedDate,
+                    "IssuanceDate", gblDraft.IssuanceDate,
+                    "AdviceDate", gblDraft.AdviceDate,
+                    "LatestShipmentDate", gblDraft.LatestShipmentDate,
+                    "ExpiryDate", gblDraft.ExpiryDate,
+                    Blank()
+                )
+            OnChange: |
+                =Set(
+                    gblDraft,
+                    Switch(
+                        ThisItem.K,
+                        "ReceivedDate", Patch(gblDraft, { ReceivedDate: Self.SelectedDate }),
+                        "IssuanceDate", Patch(gblDraft, { IssuanceDate: Self.SelectedDate }),
+                        "AdviceDate", Patch(gblDraft, { AdviceDate: Self.SelectedDate }),
+                        "LatestShipmentDate", Patch(gblDraft, { LatestShipmentDate: Self.SelectedDate }),
+                        "ExpiryDate", Patch(gblDraft, { ExpiryDate: Self.SelectedDate }),
+                        gblDraft
+                    )
+                )
+
+        cboFieldLookup As combobox:
+            X: =0
+            Y: =18
+            Width: =Parent.TemplateWidth - ThemeSpace4
+            Height: =32
+            Visible: =ThisItem.T = "lookup"
+            IsSearchable: =true
+            SelectMultiple: =false
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            DisplayFields: =["Title"]
+            SearchFields: =["Title"]
+            # Every picker is bound to a master list. Nothing here is a hard-coded option set.
+            Items: |
+                =Switch(
+                    ThisItem.O,
+                    "customer",     SortByColumns(Filter('11_Customers', IsActive = true), "Title", SortOrder.Ascending),
+                    "issuingbank",  SortByColumns(Filter('12_Banks', IsActive = true, CanIssue = true), "Title", SortOrder.Ascending),
+                    "advisingbank", SortByColumns(Filter('12_Banks', IsActive = true, CanAdvise = true), "Title", SortOrder.Ascending),
+                    "currency",     colCurrencies,
+                    "lctype",       colLCTypes,
+                    "paymentterm",  colPaymentTerms,
+                    "incoterm",     colIncoterms,
+                    "port",         SortByColumns(Filter('22_Ports', IsActive = true), "Title", SortOrder.Ascending),
+                    Blank()
+                )
+            DefaultSelectedItems: |
+                =Switch(
+                    ThisItem.O,
+                    "customer",     Filter('11_Customers', Title = gblDraft.CustomerName),
+                    "issuingbank",  Filter('12_Banks', Title = gblDraft.IssuingBankName),
+                    "advisingbank", Filter('12_Banks', Title = gblDraft.AdvisingBankName),
+                    "currency",     Filter(colCurrencies, Title = gblDraft.CurrencyCode),
+                    "lctype",       Filter(colLCTypes, LCTypeCode = gblDraft.LCTypeCode),
+                    "paymentterm",  Filter(colPaymentTerms, Title = gblDraft.PaymentTermText),
+                    "incoterm",     Filter(colIncoterms, Title = gblDraft.IncotermCode),
+                    Blank()
+                )
+            # Picking a customer also brings its country and default terms across, which is
+            # what stops the country field drifting out of step with the customer master.
+            OnChange: |
+                =Set(
+                    gblDraft,
+                    Switch(
+                        ThisItem.O,
+                        "customer",     Patch(gblDraft, {
+                                            CustomerName: Coalesce(Self.Selected.Title, ""),
+                                            CustomerCode: Coalesce(Self.Selected.CustomerCode, ""),
+                                            CountryName: Coalesce(Self.Selected.CountryName, gblDraft.CountryName)
+                                        }),
+                        "issuingbank",  Patch(gblDraft, { IssuingBankName: Coalesce(Self.Selected.Title, "") }),
+                        "advisingbank", Patch(gblDraft, { AdvisingBankName: Coalesce(Self.Selected.Title, "") }),
+                        "currency",     Patch(gblDraft, { CurrencyCode: Coalesce(Self.Selected.Title, BaseCurrency) }),
+                        "lctype",       Patch(gblDraft, {
+                                            LCTypeCode: Coalesce(Self.Selected.LCTypeCode, ""),
+                                            AvailableBy: Coalesce(Self.Selected.DefaultAvailableBy, gblDraft.AvailableBy),
+                                            PresentationPeriodDays: Coalesce(Self.Selected.DefaultPresentationDays, gblDraft.PresentationPeriodDays),
+                                            IsIrrevocable: Coalesce(Self.Selected.DefaultIrrevocable, gblDraft.IsIrrevocable)
+                                        }),
+                        "paymentterm",  Patch(gblDraft, {
+                                            PaymentTermText: Coalesce(Self.Selected.Title, ""),
+                                            PaymentTermCode: Coalesce(Self.Selected.PaymentTermCode, ""),
+                                            TenorDays: Coalesce(Self.Selected.TenorDays, 0),
+                                            SightOrDeferred: Coalesce(Self.Selected.SettlementType, gblDraft.SightOrDeferred)
+                                        }),
+                        "incoterm",     Patch(gblDraft, { IncotermCode: Coalesce(Self.Selected.Title, "") }),
+                        "port",         gblDraft,
+                        gblDraft
+                    )
+                )
+
+        drpFieldChoice As dropdown:
+            X: =0
+            Y: =18
+            Width: =Parent.TemplateWidth - ThemeSpace4
+            Height: =32
+            Visible: =ThisItem.T = "choice"
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            Items: =Split(ThisItem.O, ",")
+            Default: =gblDraft.SightOrDeferred
+            OnChange: |
+                =Set(gblDraft, Patch(gblDraft, { SightOrDeferred: Self.Selected.Value }))
+
+    # -------------------------------------------------------------------------
+    # Action bar
+    # -------------------------------------------------------------------------
+    recActionBar As rectangle:
+        X: =0
+        Y: =Parent.Height - 64
+        Width: =Parent.Width
+        Height: =64
+        Fill: =ThemeSurface
+        BorderColor: =ThemeBorder
+        BorderThickness: =1
+
+    lblSaveHint As label:
+        X: =ThemeSpace5
+        Y: =Parent.Height - 64
+        Width: =Parent.Width - 400
+        Height: =64
+        Text: |
+            =If(
+                Len(lblValidationSource.Text) > 0,
+                CountRows(Split(lblValidationSource.Text, Char(10))) & " issue(s) to resolve before saving.",
+                If(gblFormMode = "New", "Ready to register.", "Ready to save changes to " & gblDraft.LCNumber & ".")
+            )
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =If(Len(lblValidationSource.Text) > 0, ThemeDanger, ThemeTextMuted)
+        VerticalAlign: =VerticalAlign.Middle
+        PaddingLeft: =0
+
+    btnCancel As button:
+        X: =Parent.Width - 280
+        Y: =Parent.Height - 48
+        Width: =120
+        Height: =34
+        Text: ="Cancel"
+        Fill: =ThemeSurface
+        HoverFill: =ThemeSurfaceHover
+        Color: =ThemeTextSecondary
+        BorderColor: =ThemeBorderStrong
+        BorderThickness: =1
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        OnSelect: =Back()
+
+    btnSave As button:
+        X: =Parent.Width - 150
+        Y: =Parent.Height - 48
+        Width: =150 - ThemeSpace5
+        Height: =34
+        Text: =If(gblFormMode = "New", "Register LC", "Save changes")
+        Fill: =ThemeAccent
+        HoverFill: =ThemeAccentHover
+        DisabledFill: =ThemeMutedSoft
+        Color: =ThemeTextInverse
+        DisabledColor: =ThemeTextMuted
+        BorderThickness: =0
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        FontWeight: =FontWeight.Semibold
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        DisplayMode: |
+            =If(Len(lblValidationSource.Text) > 0 || !CanEditLC, DisplayMode.Disabled, DisplayMode.Edit)
+        OnSelect: |
+            =Set(gblShowErrors, true);
+            If(
+                Len(lblValidationSource.Text) > 0,
+                Notify("Resolve the listed issues before saving.", NotificationType.Error, 4000),
+                (
+                    Set(gblCorrelation, GUID());
+                    // Derived amounts are computed here, never typed. Storing them rather than
+                    // using SharePoint calculated columns keeps them indexable and delegable.
+                    Set(
+                        gblComputed,
+                        With(
+                            { maxAmt: gblDraft.LCAmount * (1 + Coalesce(gblDraft.TolerancePlus, 0) / 100) },
+                            {
+                                MaximumAmount: maxAmt,
+                                UtilizedAmount: Coalesce(gblOriginal.UtilizedAmount, 0),
+                                OutstandingAmount: maxAmt - Coalesce(gblOriginal.UtilizedAmount, 0),
+                                AvailableAmount: maxAmt - Coalesce(gblOriginal.UtilizedAmount, 0),
+                                AmountUSD: ToBase(gblDraft.LCAmount, gblDraft.CurrencyCode),
+                                FXRateToUSD: Coalesce(LookUp(colCurrencies, Title = gblDraft.CurrencyCode).RateToUSD, 1),
+                                LifecycleStage: Coalesce(
+                                    LookUp(colStatus, EntityName = "ExportLC" && StatusCode = gblDraft.LCStatus).LifecycleStage,
+                                    "Received"
+                                ),
+                                IsClosed: Coalesce(
+                                    LookUp(colStatus, EntityName = "ExportLC" && StatusCode = gblDraft.LCStatus).IsTerminal,
+                                    false
+                                )
+                            }
+                        )
+                    );
+                    Set(
+                        gblSaved,
+                        Patch(
+                            '01_ExportLCs',
+                            If(gblFormMode = "New", Defaults('01_ExportLCs'), gblOriginal),
+                            gblDraft,
+                            gblComputed,
+                            {
+                                // Internal LC ID follows the configurable pattern in 18_WorkflowConfig.
+                                Title: If(
+                                    gblFormMode = "New",
+                                    Substitute(
+                                        Substitute(CfgT("LCIDPattern", "LC-{YYYY}-{####}"), "{YYYY}", Text(Year(Coalesce(gblDraft.ReceivedDate, Today0)))),
+                                        "{####}",
+                                        Text(
+                                            CountRows(
+                                                Filter(
+                                                    '01_ExportLCs',
+                                                    ReceivedDate >= Date(Year(Coalesce(gblDraft.ReceivedDate, Today0)), 1, 1),
+                                                    ReceivedDate <= Date(Year(Coalesce(gblDraft.ReceivedDate, Today0)), 12, 31)
+                                                )
+                                            ) + 1,
+                                            "0000"
+                                        )
+                                    ),
+                                    gblOriginal.Title
+                                ),
+                                ResponsibleOfficer: If(gblFormMode = "New", User(), gblOriginal.ResponsibleOfficer),
+                                ResponsibleOfficerEmail: If(gblFormMode = "New", User().Email, gblOriginal.ResponsibleOfficerEmail),
+                                RequiresAction: gblDraft.LCStatus in ["Received", "Under Review", "Discrepancy"] ||
+                                                Coalesce(gblOriginal.OpenDiscrepancyCount, 0) > 0 ||
+                                                Coalesce(gblOriginal.MissingDocumentCount, 0) > 0,
+                                LastActivityDate: Now(),
+                                SourceSystem: If(gblFormMode = "New", "Portal", gblOriginal.SourceSystem)
+                            }
+                        )
+                    );
+
+                    // --- audit ------------------------------------------------------
+                    // One row per changed critical field, all sharing a correlation id so a
+                    // multi-field edit reads as a single transaction rather than six unrelated
+                    // events. The field list itself is configuration, not code.
+                    If(
+                        gblFormMode = "New",
+                        Patch(
+                            '10_AuditLog', Defaults('10_AuditLog'),
+                            {
+                                Title: "ExportLC:" & gblSaved.Title & ":Create",
+                                EntityName: "ExportLC", RecordItemId: gblSaved.ID,
+                                RecordReference: gblSaved.LCNumber, InternalLCID: gblSaved.Title,
+                                LCNumber: gblSaved.LCNumber, ActionType: "Create",
+                                NewValue: gblSaved.CustomerName & " · " & Money(gblSaved.LCAmount, gblSaved.CurrencyCode),
+                                IsCriticalField: true,
+                                ActionByEmail: User().Email, ActionByName: User().FullName,
+                                ActionTimestamp: Now(), ActionSource: "Power App",
+                                ActionComment: "LC registered",
+                                CorrelationId: gblCorrelation, PartitionKey: Text(Today0, "yyyy-mm")
+                            }
+                        ),
+                        ForAll(
+                            Filter(
+                                Table(
+                                    { F: "LCAmount",           O: Text(gblOriginal.LCAmount),                N: Text(gblDraft.LCAmount) },
+                                    { F: "CurrencyCode",       O: gblOriginal.CurrencyCode,                  N: gblDraft.CurrencyCode },
+                                    { F: "ExpiryDate",         O: DateShort(gblOriginal.ExpiryDate),         N: DateShort(gblDraft.ExpiryDate) },
+                                    { F: "LatestShipmentDate", O: DateShort(gblOriginal.LatestShipmentDate), N: DateShort(gblDraft.LatestShipmentDate) },
+                                    { F: "LCStatus",           O: gblOriginal.LCStatus,                      N: gblDraft.LCStatus },
+                                    { F: "CustomerName",       O: gblOriginal.CustomerName,                  N: gblDraft.CustomerName },
+                                    { F: "IssuingBankName",    O: Coalesce(gblOriginal.IssuingBankName, ""), N: Coalesce(gblDraft.IssuingBankName, "") },
+                                    { F: "BeneficiaryName",    O: Coalesce(gblOriginal.BeneficiaryName, ""), N: Coalesce(gblDraft.BeneficiaryName, "") },
+                                    { F: "PaymentTermText",    O: Coalesce(gblOriginal.PaymentTermText, ""), N: Coalesce(gblDraft.PaymentTermText, "") }
+                                ),
+                                O <> N
+                            ) As chg,
+                            Patch(
+                                '10_AuditLog', Defaults('10_AuditLog'),
+                                {
+                                    Title: "ExportLC:" & gblSaved.Title & ":" & chg.F,
+                                    EntityName: "ExportLC", RecordItemId: gblSaved.ID,
+                                    RecordReference: gblSaved.LCNumber, InternalLCID: gblSaved.Title,
+                                    LCNumber: gblSaved.LCNumber,
+                                    ActionType: Switch(
+                                        chg.F,
+                                        "LCStatus", "Status Change",
+                                        "LCAmount", "Amount Change",
+                                        "ExpiryDate", "Date Change",
+                                        "LatestShipmentDate", "Date Change",
+                                        "Update"
+                                    ),
+                                    FieldName: chg.F, OldValue: chg.O, NewValue: chg.N,
+                                    IsCriticalField: chg.F in Split(CfgT("CriticalAuditFields", ""), ";").Value,
+                                    ActionByEmail: User().Email, ActionByName: User().FullName,
+                                    ActionTimestamp: Now(), ActionSource: "Power App",
+                                    CorrelationId: gblCorrelation, PartitionKey: Text(Today0, "yyyy-mm")
+                                }
+                            )
+                        )
+                    );
+
+                    // --- checklist materialisation ---------------------------------
+                    // A new LC gets its document checklist from the most specific matching
+                    // template set in 19_DocChecklistTemplates. Nothing about which documents
+                    // are required lives in the app.
+                    If(
+                        gblFormMode = "New",
+                        With(
+                            {
+                                rules: Filter(
+                                    '19_DocChecklistTemplates',
+                                    IsActive = true,
+                                    StartsWith(AppliesToCountry, "") || AppliesToCountry = gblSaved.CountryName
+                                )
+                            },
+                            ForAll(
+                                Filter(
+                                    rules,
+                                    (AppliesToCountry = "" || AppliesToCountry = gblSaved.CountryName) &&
+                                    (AppliesToLCType = "" || AppliesToLCType = gblSaved.LCTypeCode) &&
+                                    (AppliesToCustomerCode = "" || AppliesToCustomerCode = gblSaved.CustomerCode) &&
+                                    (AppliesToIncoterm = "" || AppliesToIncoterm = gblSaved.IncotermCode)
+                                ) As r,
+                                Patch(
+                                    '20_LCDocumentChecklist', Defaults('20_LCDocumentChecklist'),
+                                    {
+                                        Title: gblSaved.Title & " · " & r.DocumentTypeName,
+                                        InternalLCID: gblSaved.Title, LCItemId: gblSaved.ID, LCNumber: gblSaved.LCNumber,
+                                        DocumentTypeCode: r.DocumentTypeCode, DocumentTypeName: r.DocumentTypeName,
+                                        IsRequired: r.IsRequired,
+                                        OriginalsRequired: r.RequiredOriginals, CopiesRequired: r.RequiredCopies,
+                                        IsReceived: false, IsReviewed: false,
+                                        ChecklistStatus: If(r.IsRequired, "Missing", "Not Applicable"),
+                                        SortOrder: r.SortOrder
+                                    }
+                                )
+                            )
+                        )
+                    );
+
+                    Notify(
+                        If(gblFormMode = "New", "LC " & gblSaved.LCNumber & " registered as " & gblSaved.Title & ".", "Changes saved."),
+                        NotificationType.Success, 4000
+                    );
+                    Set(gblCurrentLC, gblSaved);
+                    Set(gblWorkspaceTab, "Overview");
+                    Navigate(scrLCWorkspace, ScreenTransition.None)
+                )
+            )

@@ -1,0 +1,1686 @@
+# =============================================================================
+# scrLCWorkspace - the LC workspace
+# =============================================================================
+# Opening an LC lands here, not in an edit form. The workspace is where a treasury
+# officer does a day's work on one credit:
+#
+#   * A header that never scrolls away: LC number, customer, issuing bank, amount,
+#     outstanding, status, expiry and latest shipment date.
+#   * A lifecycle rail showing exactly where the credit is between Received and Closed.
+#   * Dynamically generated warnings - expiry, shipment deadline, missing documents,
+#     open discrepancies, outstanding proceeds - computed from the record, never hard-coded.
+#   * Twelve tabs covering the whole lifecycle, each one a delegable query on LCItemId.
+#
+# The record arrives in gblCurrentLC. It is re-read on entry (RefreshLC) so a workspace
+# opened from a stale register row still shows current figures.
+# =============================================================================
+
+scrLCWorkspace As screen:
+    Fill: =ThemeCanvas
+    OnVisible: |
+        =Set(gblNavSection, "LCS");
+        // Re-read from the source. The register row may be minutes old.
+        Set(gblCurrentLC, LookUp('01_ExportLCs', ID = gblCurrentLC.ID));
+        Set(gblLCId, gblCurrentLC.ID);
+        Set(gblLCInternalId, gblCurrentLC.Title);
+        // Checklist drives the missing-document warning and the Documents tab; it is small
+        // (a few dozen rows per LC) so one read per visit is the cheaper option.
+        ClearCollect(colChecklist, ChecklistFor(gblLCId));
+        Set(gblEditingLC, false)
+
+    navRail As cmpNavRail:
+        X: =0
+        Y: =0
+        Width: =RailWidth
+        Height: =Parent.Height
+        ActiveKey: ="LCS"
+        UserName: =gblUserName
+        RoleLabel: |
+            =Switch(gblRole, "ADMIN", "Administrator", "MANAGER", "Treasury Manager",
+                "OFFICER", "Treasury Officer", "REVIEWER", "Reviewer", "Read only")
+        OnNavigate: |
+            =Switch(
+                gblNavSection,
+                "HOME",      Navigate(scrDashboard, ScreenTransition.None),
+                "LCS",       Navigate(scrLCRegister, ScreenTransition.None),
+                "INVOICES",  Navigate(scrInvoices, ScreenTransition.None),
+                "SHIPMENTS", Navigate(scrShipments, ScreenTransition.None),
+                "PRESENT",   Navigate(scrPresentations, ScreenTransition.None),
+                "DOCS",      Navigate(scrDocuments, ScreenTransition.None),
+                "DISCREP",   Navigate(scrDiscrepancies, ScreenTransition.None),
+                "PROCEEDS",  Navigate(scrProceeds, ScreenTransition.None),
+                "CORRESP",   Navigate(scrCorrespondence, ScreenTransition.None),
+                "TASKS",     Navigate(scrTasks, ScreenTransition.None),
+                "REPORTS",   Navigate(scrReports, ScreenTransition.None),
+                "ADMIN",     Navigate(scrAdmin, ScreenTransition.None)
+            )
+
+    topBar As cmpTopBar:
+        X: =ContentX
+        Y: =0
+        Width: =ContentWidth
+        Height: =ThemeTopBarHeight
+        TitleText: =gblCurrentLC.LCNumber
+        Breadcrumb: |
+            ="Export LCs  /  " & gblCurrentLC.Title & "  /  " & gblWorkspaceTab
+        ShowSearch: =false
+        ShowBack: =true
+        OnBack: =Back()
+        ShowPrimary: =CanEditLC && !gblEditingLC
+        PrimaryLabel: ="Edit LC"
+        OnPrimary: |
+            =Set(gblEditLC, gblCurrentLC);
+            Set(gblFormMode, "Edit");
+            Navigate(scrLCForm, ScreenTransition.CoverRight)
+
+    # =========================================================================
+    # HEADER - the facts an officer needs before doing anything else.
+    # =========================================================================
+    recHeaderCard As rectangle:
+        X: =ContentX
+        Y: =ThemeTopBarHeight + ThemeSpace3
+        Width: =ContentWidth
+        Height: =188
+        Fill: =ThemeSurface
+        BorderColor: =ThemeBorder
+        BorderThickness: =1
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+
+    lblHdrCustomer As label:
+        X: =recHeaderCard.X + ThemeSpace5
+        Y: =recHeaderCard.Y + ThemeSpace4
+        Width: =360
+        Height: =26
+        Text: =gblCurrentLC.CustomerName
+        Font: =ThemeFont
+        Size: =ThemeSizeTitle
+        FontWeight: =FontWeight.Semibold
+        Color: =ThemeText
+        PaddingLeft: =0
+
+    lblHdrRefs As label:
+        X: =lblHdrCustomer.X
+        Y: =lblHdrCustomer.Y + 26
+        Width: =420
+        Height: =18
+        Text: |
+            =gblCurrentLC.Title & "  ·  our ref " & Coalesce(gblCurrentLC.OurReference, "-") &
+             "  ·  " & Coalesce(gblCurrentLC.CountryName, "-")
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =ThemeTextMuted
+        PaddingLeft: =0
+
+    lblHdrBank As label:
+        X: =lblHdrCustomer.X
+        Y: =lblHdrRefs.Y + 20
+        Width: =420
+        Height: =18
+        Text: |
+            ="Issued by " & Coalesce(gblCurrentLC.IssuingBankName, "-") &
+             "  ·  advised through " & Coalesce(gblCurrentLC.AdvisingBankName, "-")
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =ThemeTextSecondary
+        PaddingLeft: =0
+
+    badgeHeader As cmpStatusBadge:
+        X: =recHeaderCard.X + recHeaderCard.Width - 140 - ThemeSpace5
+        Y: =recHeaderCard.Y + ThemeSpace4 + 2
+        Width: =140
+        Height: =26
+        Entity: ="ExportLC"
+        StatusCode: =gblCurrentLC.LCStatus
+        BadgeWidth: =140
+
+    lblHdrOfficer As label:
+        X: =recHeaderCard.X + recHeaderCard.Width - 300 - ThemeSpace5
+        Y: =lblHdrRefs.Y
+        Width: =300
+        Height: =18
+        Text: |
+            ="Responsible: " & Coalesce(gblCurrentLC.ResponsibleOfficer.DisplayName, "unassigned")
+        Align: =Align.Right
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =ThemeTextSecondary
+        PaddingRight: =0
+
+    # --- the five numbers that matter, in a fixed order -----------------------
+    galHeaderFacts As gallery:
+        X: =recHeaderCard.X + ThemeSpace5
+        Y: =lblHdrBank.Y + 30
+        Width: =recHeaderCard.Width - (ThemeSpace5 * 2)
+        Height: =56
+        Layout: =Layout.Horizontal
+        TemplateSize: =(recHeaderCard.Width - (ThemeSpace5 * 2)) / 5
+        TemplatePadding: =0
+        ShowScrollbar: =false
+        DelayItemLoading: =false
+        Items: |
+            =Table(
+                {
+                    Cap: "LC Amount",
+                    Val: Money(gblCurrentLC.LCAmount, gblCurrentLC.CurrencyCode),
+                    Sub: If(gblCurrentLC.TolerancePlus > 0, "+" & gblCurrentLC.TolerancePlus & "% tolerance", gblCurrentLC.CurrencyCode),
+                    Col: ThemeText
+                },
+                {
+                    Cap: "Utilised",
+                    Val: Money(gblCurrentLC.UtilizedAmount, gblCurrentLC.CurrencyCode),
+                    Sub: If(
+                        Coalesce(gblCurrentLC.LCAmount, 0) > 0,
+                        Text(gblCurrentLC.UtilizedAmount / gblCurrentLC.LCAmount, "0%") & " drawn",
+                        ""
+                    ),
+                    Col: ThemeText
+                },
+                {
+                    Cap: "Outstanding",
+                    Val: Money(gblCurrentLC.OutstandingAmount, gblCurrentLC.CurrencyCode),
+                    Sub: If(gblCurrentLC.OutstandingAmount <= 0, "fully drawn", "available to draw"),
+                    Col: If(gblCurrentLC.OutstandingAmount <= 0, ThemeTextMuted, ThemeSuccess)
+                },
+                {
+                    Cap: "Latest Shipment",
+                    Val: DateShort(gblCurrentLC.LatestShipmentDate),
+                    Sub: DaysPhrase(gblCurrentLC.LatestShipmentDate),
+                    Col: UrgencyColor(gblCurrentLC.LatestShipmentDate)
+                },
+                {
+                    Cap: "Expiry",
+                    Val: DateShort(gblCurrentLC.ExpiryDate),
+                    Sub: DaysPhrase(gblCurrentLC.ExpiryDate) & If(Len(Coalesce(gblCurrentLC.ExpiryPlace, "")) > 0, " · " & gblCurrentLC.ExpiryPlace, ""),
+                    Col: UrgencyColor(gblCurrentLC.ExpiryDate)
+                }
+            )
+
+        lblFactCap As label:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth - ThemeSpace3
+            Height: =16
+            Text: =Upper(ThisItem.Cap)
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeTextMuted
+            PaddingLeft: =0
+
+        lblFactVal As label:
+            X: =0
+            Y: =16
+            Width: =Parent.TemplateWidth - ThemeSpace3
+            Height: =24
+            Text: =ThisItem.Val
+            Font: =ThemeFont
+            Size: =ThemeSizeHeading
+            FontWeight: =FontWeight.Semibold
+            Color: =ThisItem.Col
+            PaddingLeft: =0
+
+        lblFactSub As label:
+            X: =0
+            Y: =39
+            Width: =Parent.TemplateWidth - ThemeSpace3
+            Height: =16
+            Text: =ThisItem.Sub
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: =ThemeTextMuted
+            PaddingLeft: =0
+
+    stageTracker As cmpStageTracker:
+        X: =recHeaderCard.X + ThemeSpace5
+        Y: =recHeaderCard.Y + recHeaderCard.Height + ThemeSpace3
+        Width: =recHeaderCard.Width - (ThemeSpace5 * 2)
+        Height: =64
+        CurrentStage: |
+            =Coalesce(
+                LookUp(colStatus, EntityName = "ExportLC" && StatusCode = gblCurrentLC.LCStatus).LifecycleStage,
+                "Received"
+            )
+        IsCancelled: =gblCurrentLC.LCStatus in ["Cancelled", "Expired"]
+
+    # =========================================================================
+    # TABS
+    # =========================================================================
+    galTabs As gallery:
+        X: =ContentX
+        Y: =stageTracker.Y + stageTracker.Height + ThemeSpace3
+        Width: =ContentWidth
+        Height: =40
+        Layout: =Layout.Horizontal
+        TemplateSize: =ContentWidth / 12
+        TemplatePadding: =0
+        ShowScrollbar: =false
+        DelayItemLoading: =false
+        # Counts on the tabs come from the record's stored counters, not from counting
+        # child rows here - a tab strip that fires eleven queries on every visit is how a
+        # workspace ends up taking four seconds to open.
+        Items: |
+            =Table(
+                { Key: "Overview",       Label: "Overview",       Count: 0 },
+                { Key: "Details",        Label: "LC Details",     Count: 0 },
+                { Key: "Amendments",     Label: "Amendments",     Count: gblCurrentLC.AmendmentCount },
+                { Key: "Invoices",       Label: "Invoices",       Count: gblCurrentLC.InvoiceCount },
+                { Key: "Shipments",      Label: "Shipments",      Count: 0 },
+                { Key: "Documents",      Label: "Documents",      Count: gblCurrentLC.MissingDocumentCount },
+                { Key: "Presentations",  Label: "Presentations",  Count: 0 },
+                { Key: "Discrepancies",  Label: "Discrepancies",  Count: gblCurrentLC.OpenDiscrepancyCount },
+                { Key: "Proceeds",       Label: "Proceeds",       Count: 0 },
+                { Key: "Correspondence", Label: "Correspondence", Count: 0 },
+                { Key: "Tasks",          Label: "Tasks",          Count: gblCurrentLC.OpenTaskCount },
+                { Key: "Audit",          Label: "Audit",          Count: 0 }
+            )
+
+        btnTab As button:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight
+            Text: =""
+            Fill: =RGBA(0, 0, 0, 0)
+            HoverFill: =ThemeSurfaceHover
+            BorderThickness: =0
+            OnSelect: =Set(gblWorkspaceTab, ThisItem.Key)
+            AccessibleLabel: =ThisItem.Label
+
+        lblTab As label:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight - 3
+            Text: |
+                =ThisItem.Label & If(ThisItem.Count > 0, "  " & ThisItem.Count, "")
+            Align: =Align.Center
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: |
+                =If(gblWorkspaceTab = ThisItem.Key, FontWeight.Semibold, FontWeight.Normal)
+            Color: |
+                =If(gblWorkspaceTab = ThisItem.Key, ThemeAccent, ThemeTextSecondary)
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+            DisplayMode: =DisplayMode.View
+
+        recTabUnderline As rectangle:
+            X: =0
+            Y: =Parent.TemplateHeight - 3
+            Width: =Parent.TemplateWidth
+            Height: =3
+            Fill: =ThemeAccent
+            Visible: =gblWorkspaceTab = ThisItem.Key
+
+    recTabRule As rectangle:
+        X: =ContentX
+        Y: =galTabs.Y + galTabs.Height - 1
+        Width: =ContentWidth
+        Height: =1
+        Fill: =ThemeBorder
+
+    # =========================================================================
+    # TAB: OVERVIEW
+    # Dynamic warnings, then a two-column operational summary.
+    # =========================================================================
+    galWarnings As gallery:
+        X: =ContentX
+        Y: =galTabs.Y + galTabs.Height + ThemeSpace3
+        Width: =ContentWidth
+        Height: |
+            =Min(CountRows(Self.AllItems), 6) * 46
+        Visible: =gblWorkspaceTab = "Overview"
+        TemplateSize: =46
+        TemplatePadding: =0
+        ShowScrollbar: =false
+        DelayItemLoading: =false
+        # Every warning in section 8 of the brief, generated from the record rather than
+        # written as static text. A rule that finds nothing produces no banner.
+        Items: |
+            =Filter(
+                Table(
+                    {
+                        Sev: If(DaysUntil(gblCurrentLC.ExpiryDate) < 0, "Danger", "Warning"),
+                        Msg: If(
+                            DaysUntil(gblCurrentLC.ExpiryDate) < 0,
+                            "LC expired " & Abs(DaysUntil(gblCurrentLC.ExpiryDate)) & " days ago on " & DateShort(gblCurrentLC.ExpiryDate),
+                            "LC expires " & DaysPhrase(gblCurrentLC.ExpiryDate) & " on " & DateShort(gblCurrentLC.ExpiryDate)
+                        ),
+                        Act: "",
+                        Show: !gblCurrentLC.IsClosed && DaysUntil(gblCurrentLC.ExpiryDate) <= WinExpiringSoon
+                    },
+                    {
+                        Sev: If(DaysUntil(gblCurrentLC.LatestShipmentDate) < 0, "Danger", "Warning"),
+                        Msg: If(
+                            DaysUntil(gblCurrentLC.LatestShipmentDate) < 0,
+                            "Latest shipment date passed " & Abs(DaysUntil(gblCurrentLC.LatestShipmentDate)) & " days ago",
+                            "Shipment deadline " & DaysPhrase(gblCurrentLC.LatestShipmentDate)
+                        ),
+                        Act: "Open shipments",
+                        Show: !gblCurrentLC.IsClosed && DaysUntil(gblCurrentLC.LatestShipmentDate) <= WinShipmentSoon
+                    },
+                    {
+                        Sev: "Warning",
+                        Msg: gblCurrentLC.MissingDocumentCount & " required document" &
+                             If(gblCurrentLC.MissingDocumentCount = 1, " is", "s are") & " missing",
+                        Act: "Open checklist",
+                        Show: gblCurrentLC.MissingDocumentCount > 0
+                    },
+                    {
+                        Sev: "Danger",
+                        Msg: gblCurrentLC.OpenDiscrepancyCount & " discrepanc" &
+                             If(gblCurrentLC.OpenDiscrepancyCount = 1, "y is", "ies are") & " open",
+                        Act: "Open discrepancies",
+                        Show: gblCurrentLC.OpenDiscrepancyCount > 0
+                    },
+                    {
+                        Sev: "Info",
+                        Msg: "Proceeds outstanding: " &
+                             Money(gblCurrentLC.OutstandingAmount - Coalesce(gblCurrentLC.AmountPaidToDate, 0), gblCurrentLC.CurrencyCode),
+                        Act: "Open proceeds",
+                        Show: Coalesce(gblCurrentLC.AmountPaidToDate, 0) < Coalesce(gblCurrentLC.UtilizedAmount, 0)
+                    },
+                    {
+                        Sev: "Warning",
+                        Msg: "An amendment is awaiting action and has not been applied to this LC",
+                        Act: "Open amendments",
+                        Show: gblCurrentLC.AmendmentCount > 0 && !IsEmpty(Filter('02_LCAmendments', LCItemId = gblLCId, AppliedToLC = false))
+                    }
+                ),
+                Show
+            )
+
+        alertRow As cmpAlertBanner:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =40
+            Severity: =ThisItem.Sev
+            Message: =ThisItem.Msg
+            ActionLabel: =ThisItem.Act
+            OnAction: |
+                =Set(
+                    gblWorkspaceTab,
+                    Switch(
+                        ThisItem.Act,
+                        "Open shipments", "Shipments",
+                        "Open checklist", "Documents",
+                        "Open discrepancies", "Discrepancies",
+                        "Open proceeds", "Proceeds",
+                        "Open amendments", "Amendments",
+                        gblWorkspaceTab
+                    )
+                )
+
+    cardOvFinancial As cmpSectionCard:
+        X: =ContentX
+        Y: =galWarnings.Y + galWarnings.Height + ThemeSpace3
+        Width: =(ContentWidth / 2) - ThemeSpace2
+        Height: =230
+        Visible: =gblWorkspaceTab = "Overview"
+        HeaderText: ="Financial position"
+        SubText: ="All figures in " & gblCurrentLC.CurrencyCode
+        ActionLabel: ="Proceeds"
+        OnAction: =Set(gblWorkspaceTab, "Proceeds")
+
+    galOvFinancial As gallery:
+        X: =cardOvFinancial.X + ThemeSpace4
+        Y: =cardOvFinancial.Y + 62
+        Width: =cardOvFinancial.Width - (ThemeSpace4 * 2)
+        Height: =160
+        Visible: =cardOvFinancial.Visible
+        TemplateSize: =32
+        TemplatePadding: =0
+        ShowScrollbar: =false
+        DelayItemLoading: =false
+        Items: |
+            =Table(
+                { L: "LC amount",        V: Money(gblCurrentLC.LCAmount, gblCurrentLC.CurrencyCode),        E: false },
+                { L: "Maximum amount",   V: Money(gblCurrentLC.MaximumAmount, gblCurrentLC.CurrencyCode),   E: false },
+                { L: "Utilised",         V: Money(gblCurrentLC.UtilizedAmount, gblCurrentLC.CurrencyCode),  E: false },
+                { L: "Outstanding",      V: Money(gblCurrentLC.OutstandingAmount, gblCurrentLC.CurrencyCode), E: true },
+                { L: "Paid to date",     V: Money(gblCurrentLC.AmountPaidToDate, gblCurrentLC.CurrencyCode), E: false }
+            )
+        fieldRow As cmpFieldRow:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =31
+            FieldLabel: =ThisItem.L
+            FieldValue: =ThisItem.V
+            Emphasis: =ThisItem.E
+            LabelWidth: =150
+
+    cardOvDates As cmpSectionCard:
+        X: =ContentX + (ContentWidth / 2) + ThemeSpace2
+        Y: =cardOvFinancial.Y
+        Width: =(ContentWidth / 2) - ThemeSpace2
+        Height: =230
+        Visible: =gblWorkspaceTab = "Overview"
+        HeaderText: ="Key dates"
+        SubText: ="Deadlines driving the credit"
+        ActionLabel: ="LC details"
+        OnAction: =Set(gblWorkspaceTab, "Details")
+
+    galOvDates As gallery:
+        X: =cardOvDates.X + ThemeSpace4
+        Y: =cardOvDates.Y + 62
+        Width: =cardOvDates.Width - (ThemeSpace4 * 2)
+        Height: =160
+        Visible: =cardOvDates.Visible
+        TemplateSize: =32
+        TemplatePadding: =0
+        ShowScrollbar: =false
+        DelayItemLoading: =false
+        Items: |
+            =Table(
+                { L: "Received",        V: DateShort(gblCurrentLC.ReceivedDate),      E: false },
+                { L: "Issued",          V: DateShort(gblCurrentLC.IssuanceDate),      E: false },
+                { L: "Latest shipment", V: DateShort(gblCurrentLC.LatestShipmentDate) & "  ·  " & DaysPhrase(gblCurrentLC.LatestShipmentDate), E: true },
+                { L: "Expiry",          V: DateShort(gblCurrentLC.ExpiryDate) & "  ·  " & DaysPhrase(gblCurrentLC.ExpiryDate), E: true },
+                { L: "Presentation period", V: Coalesce(Text(gblCurrentLC.PresentationPeriodDays), Text(CfgN("DefaultPresentationPeriodDays", 21))) & " days from shipment", E: false }
+            )
+        fieldRowD As cmpFieldRow:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =31
+            FieldLabel: =ThisItem.L
+            FieldValue: =ThisItem.V
+            Emphasis: =ThisItem.E
+            LabelWidth: =150
+
+    cardOvOutstanding As cmpSectionCard:
+        X: =ContentX
+        Y: =cardOvFinancial.Y + cardOvFinancial.Height + ThemeSpace3
+        Width: =ContentWidth
+        Height: =Max(180, Parent.Height - Self.Y - ThemeSpace4)
+        Visible: =gblWorkspaceTab = "Overview"
+        HeaderText: ="Outstanding actions"
+        SubText: ="Open tasks and correspondence awaiting a response on this LC"
+        ActionLabel: ="New task"
+        ShowAction: =IsOfficer
+        OnAction: |
+            =Set(gblTaskContext, { Entity: "LC", Id: gblLCId, Ref: gblCurrentLC.LCNumber });
+            Set(gblWorkspaceTab, "Tasks")
+
+    galOvActions As gallery:
+        X: =cardOvOutstanding.X + 1
+        Y: =cardOvOutstanding.Y + 64
+        Width: =cardOvOutstanding.Width - 2
+        Height: =cardOvOutstanding.Height - 70
+        Visible: =cardOvOutstanding.Visible
+        TemplateSize: =44
+        TemplatePadding: =0
+        DelayItemLoading: =true
+        Items: =SortByColumns(Filter('09_Tasks', LCItemId = gblLCId, IsOpen = true), "DueDate", SortOrder.Ascending)
+
+        lblTaskTitle As label:
+            X: =ThemeSpace4
+            Y: =4
+            Width: =Parent.TemplateWidth * 0.45
+            Height: =20
+            Text: =ThisItem.Title
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeText
+            PaddingLeft: =0
+
+        lblTaskMeta As label:
+            X: =ThemeSpace4
+            Y: =22
+            Width: =Parent.TemplateWidth * 0.45
+            Height: =16
+            Text: =ThisItem.TaskCategory & " · " & Coalesce(ThisItem.AssignedTo.DisplayName, "unassigned")
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: =ThemeTextMuted
+            PaddingLeft: =0
+
+        lblTaskDue As label:
+            X: =Parent.TemplateWidth * 0.5
+            Y: =12
+            Width: =200
+            Height: =20
+            Text: ="Due " & DateShort(ThisItem.DueDate) & " · " & DaysPhrase(ThisItem.DueDate)
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: =FontWeight.Semibold
+            Color: =UrgencyColor(ThisItem.DueDate)
+            PaddingLeft: =0
+
+        badgeTask As cmpStatusBadge:
+            X: =Parent.TemplateWidth - 130 - ThemeSpace4
+            Y: =10
+            Width: =130
+            Height: =24
+            Entity: ="Task"
+            StatusCode: =ThisItem.TaskStatus
+            BadgeWidth: =130
+
+        recTaskRule As rectangle:
+            X: =ThemeSpace4
+            Y: =Parent.TemplateHeight - 1
+            Width: =Parent.TemplateWidth - (ThemeSpace4 * 2)
+            Height: =1
+            Fill: =ThemeBorder
+
+    emptyOvActions As cmpEmptyState:
+        X: =cardOvOutstanding.X
+        Y: =cardOvOutstanding.Y + 80
+        Width: =cardOvOutstanding.Width
+        Height: =120
+        Visible: =cardOvOutstanding.Visible && IsEmpty(galOvActions.AllItems)
+        Title: ="Nothing outstanding"
+        Body: ="No open tasks on this LC."
+        ActionLabel: =""
+
+    # =========================================================================
+    # TAB: LC DETAILS
+    # The full record from section 9 of the brief, grouped into five blocks and
+    # rendered from data. Sixty fields as sixty hand-placed labels would be
+    # unmaintainable; as five galleries over cmpFieldRow it is one screen of YAML.
+    # =========================================================================
+    galDetailBlocks As gallery:
+        X: =ContentX
+        Y: =galTabs.Y + galTabs.Height + ThemeSpace3
+        Width: =ContentWidth
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        Visible: =gblWorkspaceTab = "Details"
+        Layout: =Layout.Vertical
+        WrapCount: =If(IsMedium, 1, 2)
+        TemplateSize: =300
+        TemplatePadding: =0
+        ShowScrollbar: =true
+        DelayItemLoading: =false
+        Items: |
+            =Table(
+                {
+                    Block: "Identification",
+                    Rows: Table(
+                        { L: "Internal LC ID",      V: gblCurrentLC.Title },
+                        { L: "LC number",           V: gblCurrentLC.LCNumber },
+                        { L: "Our reference",       V: Coalesce(gblCurrentLC.OurReference, "") },
+                        { L: "Customer",            V: gblCurrentLC.CustomerName },
+                        { L: "Customer code",       V: Coalesce(gblCurrentLC.CustomerCode, "") },
+                        { L: "Applicant",           V: Coalesce(gblCurrentLC.ApplicantName, "") },
+                        { L: "Beneficiary",         V: Coalesce(gblCurrentLC.BeneficiaryName, "") },
+                        { L: "Issuing bank",        V: Coalesce(gblCurrentLC.IssuingBankName, "") },
+                        { L: "Advising bank",       V: Coalesce(gblCurrentLC.AdvisingBankName, "") },
+                        { L: "Confirming bank",     V: Coalesce(gblCurrentLC.ConfirmingBankName, "") },
+                        { L: "Reimbursing bank",    V: Coalesce(gblCurrentLC.ReimbursingBankName, "") },
+                        { L: "Responsible officer", V: Coalesce(gblCurrentLC.ResponsibleOfficer.DisplayName, "") }
+                    )
+                },
+                {
+                    Block: "LC terms",
+                    Rows: Table(
+                        { L: "LC type",             V: Coalesce(gblCurrentLC.LCTypeCode, "") },
+                        { L: "Irrevocable",         V: If(gblCurrentLC.IsIrrevocable, "Yes", "No") },
+                        { L: "Transferable",        V: If(gblCurrentLC.IsTransferable, "Yes", "No") },
+                        { L: "Revolving",           V: If(gblCurrentLC.IsRevolving, "Yes", "No") },
+                        { L: "Confirmed",           V: If(gblCurrentLC.IsConfirmed, "Yes", "No") },
+                        { L: "Available with",      V: Coalesce(gblCurrentLC.AvailableWith, "") },
+                        { L: "Available by",        V: Coalesce(gblCurrentLC.AvailableBy, "") },
+                        { L: "Drafts at",           V: Coalesce(gblCurrentLC.DraftsAt, "") },
+                        { L: "Sight / deferred",    V: Coalesce(gblCurrentLC.SightOrDeferred, "") },
+                        { L: "Tenor",               V: If(IsBlank(gblCurrentLC.TenorDays), "", gblCurrentLC.TenorDays & " days") },
+                        { L: "Payment terms",       V: Coalesce(gblCurrentLC.PaymentTermText, "") },
+                        { L: "Negotiation terms",   V: Coalesce(gblCurrentLC.NegotiationTerms, "") },
+                        { L: "Partial shipments",   V: Coalesce(gblCurrentLC.PartialShipments, "") },
+                        { L: "Transshipment",       V: Coalesce(gblCurrentLC.Transshipment, "") },
+                        { L: "Presentation period", V: If(IsBlank(gblCurrentLC.PresentationPeriodDays), "", gblCurrentLC.PresentationPeriodDays & " days") }
+                    )
+                },
+                {
+                    Block: "Dates",
+                    Rows: Table(
+                        { L: "Received",            V: DateShort(gblCurrentLC.ReceivedDate) },
+                        { L: "Issuance",            V: DateShort(gblCurrentLC.IssuanceDate) },
+                        { L: "Advice",              V: DateShort(gblCurrentLC.AdviceDate) },
+                        { L: "Acceptance",          V: DateShort(gblCurrentLC.AcceptanceDate) },
+                        { L: "Latest shipment",     V: DateShort(gblCurrentLC.LatestShipmentDate) },
+                        { L: "Expiry",              V: DateShort(gblCurrentLC.ExpiryDate) },
+                        { L: "Place of expiry",     V: Coalesce(gblCurrentLC.ExpiryPlace, "") },
+                        { L: "Last presentation",   V: DateShort(gblCurrentLC.LastPresentationDate) },
+                        { L: "Settlement",          V: DateShort(gblCurrentLC.SettlementDate) }
+                    )
+                },
+                {
+                    Block: "Commercial",
+                    Rows: Table(
+                        { L: "Purchase order",      V: Coalesce(gblCurrentLC.PurchaseOrder, "") },
+                        { L: "Sales contract",      V: Coalesce(gblCurrentLC.SalesContract, "") },
+                        { L: "Contract date",       V: DateShort(gblCurrentLC.ContractDate) },
+                        { L: "Incoterm",            V: Coalesce(gblCurrentLC.IncotermCode, "") },
+                        { L: "Port of loading",     V: Coalesce(gblCurrentLC.PortOfLoading, "") },
+                        { L: "Port of discharge",   V: Coalesce(gblCurrentLC.PortOfDischarge, "") },
+                        { L: "Country of origin",   V: Coalesce(gblCurrentLC.CountryOfOrigin, "") },
+                        { L: "Final destination",   V: Coalesce(gblCurrentLC.FinalDestination, "") },
+                        { L: "HS code",             V: Coalesce(gblCurrentLC.HSCode, "") },
+                        { L: "Goods",               V: Coalesce(gblCurrentLC.GoodsDescription, "") }
+                    )
+                },
+                {
+                    Block: "Financial",
+                    Rows: Table(
+                        { L: "Currency",            V: gblCurrentLC.CurrencyCode },
+                        { L: "LC amount",           V: Money(gblCurrentLC.LCAmount, gblCurrentLC.CurrencyCode) },
+                        { L: "Tolerance",           V: "+" & Coalesce(gblCurrentLC.TolerancePlus, 0) & "% / -" & Coalesce(gblCurrentLC.ToleranceMinus, 0) & "%" },
+                        { L: "Maximum amount",      V: Money(gblCurrentLC.MaximumAmount, gblCurrentLC.CurrencyCode) },
+                        { L: "Utilised",            V: Money(gblCurrentLC.UtilizedAmount, gblCurrentLC.CurrencyCode) },
+                        { L: "Outstanding",         V: Money(gblCurrentLC.OutstandingAmount, gblCurrentLC.CurrencyCode) },
+                        { L: "Available",           V: Money(gblCurrentLC.AvailableAmount, gblCurrentLC.CurrencyCode) },
+                        { L: "Paid to date",        V: Money(gblCurrentLC.AmountPaidToDate, gblCurrentLC.CurrencyCode) },
+                        { L: "Value in " & BaseCurrency, V: Money(ToBase(gblCurrentLC.LCAmount, gblCurrentLC.CurrencyCode), BaseCurrency) }
+                    )
+                }
+            )
+
+        recBlockCard As rectangle:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth - ThemeSpace3
+            Height: =Parent.TemplateHeight - ThemeSpace3
+            Fill: =ThemeSurface
+            BorderColor: =ThemeBorder
+            BorderThickness: =1
+            RadiusTopLeft: =ThemeRadius
+            RadiusTopRight: =ThemeRadius
+            RadiusBottomLeft: =ThemeRadius
+            RadiusBottomRight: =ThemeRadius
+
+        lblBlockTitle As label:
+            X: =ThemeSpace4
+            Y: =ThemeSpace3
+            Width: =recBlockCard.Width - (ThemeSpace4 * 2)
+            Height: =22
+            Text: =ThisItem.Block
+            Font: =ThemeFont
+            Size: =ThemeSizeHeading
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeText
+            PaddingLeft: =0
+
+        galBlockRows As gallery:
+            X: =ThemeSpace4
+            Y: =ThemeSpace3 + 30
+            Width: =recBlockCard.Width - (ThemeSpace4 * 2)
+            Height: =recBlockCard.Height - ThemeSpace3 - 36
+            Items: =ThisItem.Rows
+            TemplateSize: =28
+            TemplatePadding: =0
+            ShowScrollbar: =false
+            DelayItemLoading: =false
+
+            rowDetail As cmpFieldRow:
+                X: =0
+                Y: =0
+                Width: =Parent.TemplateWidth
+                Height: =27
+                FieldLabel: =ThisItem.L
+                FieldValue: =ThisItem.V
+                LabelWidth: =150
+
+    # =========================================================================
+    # TAB: AMENDMENTS
+    # Original terms are never overwritten. Each amendment shows what changed as
+    # BEFORE -> AFTER, and only an unapplied amendment can be applied forward.
+    # =========================================================================
+    btnNewAmendment As button:
+        X: =ContentX + ContentWidth - 170
+        Y: =galTabs.Y + galTabs.Height + ThemeSpace3
+        Width: =170
+        Height: =32
+        Text: ="Record amendment"
+        Visible: =gblWorkspaceTab = "Amendments" && CanEditLC
+        Fill: =ThemeAccent
+        HoverFill: =ThemeAccentHover
+        Color: =ThemeTextInverse
+        BorderThickness: =0
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        FontWeight: =FontWeight.Semibold
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        OnSelect: |
+            =Set(gblEditAmendment, Blank());
+            Set(gblFormMode, "New");
+            Navigate(scrAmendmentForm, ScreenTransition.CoverRight)
+
+    lblAmendIntro As label:
+        X: =ContentX
+        Y: =btnNewAmendment.Y
+        Width: =ContentWidth - 190
+        Height: =32
+        Text: ="Original LC terms are preserved. Each amendment records what changed, who accepted it and when it was applied."
+        Font: =ThemeFont
+        Size: =ThemeSizeSmall
+        Color: =ThemeTextMuted
+        VerticalAlign: =VerticalAlign.Middle
+        Visible: =gblWorkspaceTab = "Amendments"
+        PaddingLeft: =0
+
+    galAmendments As gallery:
+        X: =ContentX
+        Y: =btnNewAmendment.Y + 40
+        Width: =ContentWidth
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        Visible: =gblWorkspaceTab = "Amendments"
+        TemplateSize: =108
+        TemplatePadding: =0
+        DelayItemLoading: =true
+        Items: =SortByColumns(Filter('02_LCAmendments', LCItemId = gblLCId), "AmendmentNumber", SortOrder.Ascending)
+
+        recAmdCard As rectangle:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight - ThemeSpace2
+            Fill: =ThemeSurface
+            BorderColor: =If(ThisItem.AppliedToLC, ThemeBorder, ThemeWarning)
+            BorderThickness: =1
+            RadiusTopLeft: =ThemeRadius
+            RadiusTopRight: =ThemeRadius
+            RadiusBottomLeft: =ThemeRadius
+            RadiusBottomRight: =ThemeRadius
+
+        lblAmdNo As label:
+            X: =ThemeSpace4
+            Y: =ThemeSpace3
+            Width: =240
+            Height: =20
+            Text: ="Amendment " & ThisItem.AmendmentNumber & "  ·  " & DateShort(ThisItem.AmendmentDate)
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeText
+            PaddingLeft: =0
+
+        lblAmdTypes As label:
+            X: =ThemeSpace4
+            Y: =ThemeSpace3 + 20
+            Width: =400
+            Height: =18
+            Text: =Concat(ThisItem.AmendmentTypes, Value, ", ")
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            PaddingLeft: =0
+
+        lblAmdDesc As label:
+            X: =ThemeSpace4
+            Y: =ThemeSpace3 + 38
+            Width: =Parent.TemplateWidth * 0.45
+            Height: =34
+            Text: =ThisItem.AmendmentDescription
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            PaddingLeft: =0
+
+        # --- before -> after, only for the fields this amendment actually touched ---
+        galAmdChanges As gallery:
+            X: =Parent.TemplateWidth * 0.47
+            Y: =ThemeSpace3
+            Width: =Parent.TemplateWidth * 0.33
+            Height: =Parent.TemplateHeight - ThemeSpace4
+            TemplateSize: =24
+            TemplatePadding: =0
+            ShowScrollbar: =false
+            DelayItemLoading: =false
+            Items: |
+                =Filter(
+                    Table(
+                        {
+                            F: "Amount",
+                            B: Money(ThisItem.AmountBefore, gblCurrentLC.CurrencyCode),
+                            A: Money(ThisItem.AmountAfter, gblCurrentLC.CurrencyCode),
+                            Show: !IsBlank(ThisItem.AmountAfter)
+                        },
+                        {
+                            F: "Expiry",
+                            B: DateShort(ThisItem.ExpiryBefore),
+                            A: DateShort(ThisItem.ExpiryAfter),
+                            Show: !IsBlank(ThisItem.ExpiryAfter)
+                        },
+                        {
+                            F: "Latest shipment",
+                            B: DateShort(ThisItem.ShipmentDateBefore),
+                            A: DateShort(ThisItem.ShipmentDateAfter),
+                            Show: !IsBlank(ThisItem.ShipmentDateAfter)
+                        },
+                        {
+                            F: Coalesce(ThisItem.ChangedField, "Other"),
+                            B: Coalesce(ThisItem.PreviousValue, "-"),
+                            A: Coalesce(ThisItem.NewValue, "-"),
+                            Show: !IsBlank(ThisItem.NewValue) && IsBlank(ThisItem.AmountAfter) &&
+                                  IsBlank(ThisItem.ExpiryAfter) && IsBlank(ThisItem.ShipmentDateAfter)
+                        }
+                    ),
+                    Show
+                )
+
+            lblChgField As label:
+                X: =0
+                Y: =0
+                Width: =Parent.TemplateWidth * 0.34
+                Height: =22
+                Text: =ThisItem.F
+                Font: =ThemeFont
+                Size: =ThemeSizeMicro
+                Color: =ThemeTextMuted
+                VerticalAlign: =VerticalAlign.Middle
+                PaddingLeft: =0
+
+            lblChgBefore As label:
+                X: =Parent.TemplateWidth * 0.34
+                Y: =0
+                Width: =Parent.TemplateWidth * 0.28
+                Height: =22
+                Text: =ThisItem.B
+                Font: =ThemeFont
+                Size: =ThemeSizeSmall
+                Color: =ThemeTextMuted
+                # Struck through: the eye reads "this is no longer true" before it reads the words.
+                Strikethrough: =true
+                VerticalAlign: =VerticalAlign.Middle
+                PaddingLeft: =0
+
+            icoChgArrow As icon:
+                Icon: =Icon.ChevronRight
+                X: =Parent.TemplateWidth * 0.62
+                Y: =5
+                Width: =12
+                Height: =12
+                Color: =ThemeTextMuted
+
+            lblChgAfter As label:
+                X: =Parent.TemplateWidth * 0.66
+                Y: =0
+                Width: =Parent.TemplateWidth * 0.34
+                Height: =22
+                Text: =ThisItem.A
+                Font: =ThemeFont
+                Size: =ThemeSizeSmall
+                FontWeight: =FontWeight.Semibold
+                Color: =ThemeText
+                VerticalAlign: =VerticalAlign.Middle
+                PaddingLeft: =0
+
+        lblAmdAcceptance As label:
+            X: =Parent.TemplateWidth * 0.82
+            Y: =ThemeSpace3
+            Width: =180
+            Height: =18
+            Text: |
+                ="Customer: " & ThisItem.CustomerAcceptance
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: |
+                =If(ThisItem.CustomerAcceptance = "Accepted", ThemeSuccess,
+                    ThisItem.CustomerAcceptance = "Rejected", ThemeDanger, ThemeWarning)
+            PaddingLeft: =0
+
+        lblAmdBank As label:
+            X: =Parent.TemplateWidth * 0.82
+            Y: =ThemeSpace3 + 18
+            Width: =180
+            Height: =18
+            Text: |
+                ="Bank: " & ThisItem.BankConfirmation
+            Font: =ThemeFont
+            Size: =ThemeSizeMicro
+            Color: |
+                =If(ThisItem.BankConfirmation = "Confirmed", ThemeSuccess,
+                    ThisItem.BankConfirmation = "Rejected", ThemeDanger, ThemeWarning)
+            PaddingLeft: =0
+
+        badgeAmd As cmpStatusBadge:
+            X: =Parent.TemplateWidth * 0.82
+            Y: =ThemeSpace3 + 40
+            Width: =140
+            Height: =24
+            Entity: ="Amendment"
+            StatusCode: =ThisItem.AmendmentStatus
+            BadgeWidth: =140
+
+        btnApplyAmd As button:
+            X: =Parent.TemplateWidth - 130 - ThemeSpace4
+            Y: =Parent.TemplateHeight - 42
+            Width: =130
+            Height: =28
+            Text: ="Apply to LC"
+            # Only an accepted, unapplied amendment can be applied, and only by someone who
+            # may edit the LC. Everything else about the amendment stays visible.
+            Visible: |
+                =CanEditLC && !ThisItem.AppliedToLC && ThisItem.AmendmentStatus = "Accepted"
+            Fill: =ThemeAccent
+            HoverFill: =ThemeAccentHover
+            Color: =ThemeTextInverse
+            BorderThickness: =0
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: =FontWeight.Semibold
+            RadiusTopLeft: =4
+            RadiusTopRight: =4
+            RadiusBottomLeft: =4
+            RadiusBottomRight: =4
+            # Applying an amendment writes the new values forward onto the LC, stamps the
+            # amendment as applied, and records one audit row per changed field under a single
+            # correlation id so the change reads as one transaction.
+            OnSelect: |
+                =Set(gblCorrelation, GUID());
+                With(
+                    { amd: ThisItem, lc: gblCurrentLC },
+                    Patch(
+                        '01_ExportLCs',
+                        lc,
+                        {
+                            LCAmount: Coalesce(amd.AmountAfter, lc.LCAmount),
+                            MaximumAmount: Coalesce(amd.AmountAfter, lc.LCAmount) * (1 + Coalesce(lc.TolerancePlus, 0) / 100),
+                            ExpiryDate: Coalesce(amd.ExpiryAfter, lc.ExpiryDate),
+                            LatestShipmentDate: Coalesce(amd.ShipmentDateAfter, lc.LatestShipmentDate),
+                            OutstandingAmount: Coalesce(amd.AmountAfter, lc.LCAmount) * (1 + Coalesce(lc.TolerancePlus, 0) / 100) - Coalesce(lc.UtilizedAmount, 0),
+                            LastActivityDate: Now()
+                        }
+                    );
+                    Patch(
+                        '02_LCAmendments',
+                        amd,
+                        { AppliedToLC: true, AmendmentStatus: "Applied", AppliedDate: Now(), AppliedBy: User() }
+                    );
+                    ForAll(
+                        Filter(
+                            Table(
+                                { F: "LCAmount",           O: Text(lc.LCAmount),           N: Text(amd.AmountAfter),        S: !IsBlank(amd.AmountAfter) },
+                                { F: "ExpiryDate",         O: DateShort(lc.ExpiryDate),    N: DateShort(amd.ExpiryAfter),   S: !IsBlank(amd.ExpiryAfter) },
+                                { F: "LatestShipmentDate", O: DateShort(lc.LatestShipmentDate), N: DateShort(amd.ShipmentDateAfter), S: !IsBlank(amd.ShipmentDateAfter) }
+                            ),
+                            S
+                        ) As chg,
+                        Patch(
+                            '10_AuditLog',
+                            Defaults('10_AuditLog'),
+                            {
+                                Title: "ExportLC:" & lc.Title & ":" & chg.F,
+                                EntityName: "ExportLC",
+                                RecordItemId: lc.ID,
+                                RecordReference: lc.LCNumber,
+                                InternalLCID: lc.Title,
+                                LCNumber: lc.LCNumber,
+                                ActionType: "Amendment Applied",
+                                FieldName: chg.F,
+                                OldValue: chg.O,
+                                NewValue: chg.N,
+                                IsCriticalField: true,
+                                ActionByEmail: User().Email,
+                                ActionByName: User().FullName,
+                                ActionTimestamp: Now(),
+                                ActionSource: "Power App",
+                                ActionComment: "Applied amendment " & amd.AmendmentNumber,
+                                CorrelationId: gblCorrelation,
+                                PartitionKey: Text(Today0, "yyyy-mm")
+                            }
+                        )
+                    )
+                );
+                Set(gblCurrentLC, LookUp('01_ExportLCs', ID = gblLCId));
+                Notify("Amendment applied and the LC updated.", NotificationType.Success, 3000)
+
+    emptyAmendments As cmpEmptyState:
+        X: =ContentX
+        Y: =galAmendments.Y + 30
+        Width: =ContentWidth
+        Height: =160
+        Visible: =gblWorkspaceTab = "Amendments" && IsEmpty(galAmendments.AllItems)
+        Title: ="No amendments"
+        Body: ="This credit is still on its original terms."
+        ActionLabel: =If(CanEditLC, "Record amendment", "")
+        OnAction: |
+            =Set(gblEditAmendment, Blank());
+            Set(gblFormMode, "New");
+            Navigate(scrAmendmentForm, ScreenTransition.CoverRight)
+
+    # =========================================================================
+    # TABS: INVOICES / SHIPMENTS / PRESENTATIONS / DISCREPANCIES / PROCEEDS /
+    #       CORRESPONDENCE / TASKS
+    #
+    # These seven tabs share one grid. Rather than seven near-identical galleries,
+    # a single definition table describes each tab's query, its columns and its
+    # "add" action, and one gallery renders whichever is active. Adding a column to
+    # the invoice grid is a one-line change here, not a re-layout.
+    #
+    # Each Items expression is a delegable Filter on LCItemId, which is indexed on
+    # every child list.
+    # =========================================================================
+    btnAddChild As button:
+        X: =ContentX + ContentWidth - 170
+        Y: =galTabs.Y + galTabs.Height + ThemeSpace3
+        Width: =170
+        Height: =32
+        Text: |
+            =Switch(
+                gblWorkspaceTab,
+                "Invoices", "Add invoice", "Shipments", "Add shipment",
+                "Presentations", "New presentation", "Discrepancies", "Record discrepancy",
+                "Proceeds", "Record proceeds", "Correspondence", "Log correspondence",
+                "Tasks", "New task", ""
+            )
+        Visible: |
+            =IsOfficer && gblWorkspaceTab in
+                ["Invoices", "Shipments", "Presentations", "Discrepancies", "Proceeds", "Correspondence", "Tasks"]
+        Fill: =ThemeAccent
+        HoverFill: =ThemeAccentHover
+        Color: =ThemeTextInverse
+        BorderThickness: =0
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        FontWeight: =FontWeight.Semibold
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        OnSelect: |
+            =Set(gblChildContext, { LCItemId: gblLCId, LCNumber: gblCurrentLC.LCNumber, InternalLCID: gblCurrentLC.Title, CustomerName: gblCurrentLC.CustomerName, CurrencyCode: gblCurrentLC.CurrencyCode });
+            Set(gblFormMode, "New");
+            Set(gblEditChild, Blank());
+            Switch(
+                gblWorkspaceTab,
+                "Invoices",       Navigate(scrInvoiceForm, ScreenTransition.CoverRight),
+                "Shipments",      Navigate(scrShipmentForm, ScreenTransition.CoverRight),
+                "Presentations",  Navigate(scrPresentationForm, ScreenTransition.CoverRight),
+                "Discrepancies",  Navigate(scrDiscrepancyForm, ScreenTransition.CoverRight),
+                "Proceeds",       Navigate(scrProceedsForm, ScreenTransition.CoverRight),
+                "Correspondence", Navigate(scrCorrespondenceForm, ScreenTransition.CoverRight),
+                "Tasks",          Navigate(scrTaskForm, ScreenTransition.CoverRight)
+            )
+
+    galChildRecords As gallery:
+        X: =ContentX
+        Y: =btnAddChild.Y + 40
+        Width: =ContentWidth
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        Visible: |
+            =gblWorkspaceTab in
+                ["Invoices", "Shipments", "Presentations", "Discrepancies", "Proceeds", "Correspondence", "Tasks"]
+        TemplateSize: =52
+        TemplatePadding: =0
+        ShowScrollbar: =true
+        DelayItemLoading: =true
+        LoadingSpinner: =LoadingSpinner.Data
+        # Each branch is its own delegable query. They are shaped into a common
+        # {C1..C5, Status, Entity, Flag} record so one row template renders them all.
+        Items: |
+            =Switch(
+                gblWorkspaceTab,
+                "Invoices",
+                    AddColumns(
+                        SortByColumns(Filter('03_Invoices', LCItemId = gblLCId), "InvoiceDate", SortOrder.Descending),
+                        "C1", Title,
+                        "C2", DateShort(InvoiceDate),
+                        "C3", Money(InvoiceAmount, CurrencyCode),
+                        "C4", Money(OutstandingAmount, CurrencyCode),
+                        "C5", "Due " & DateShort(DueDate),
+                        "St", InvoiceStatus,
+                        "En", "Invoice",
+                        "Fl", !IsBlank(DueDate) && DateDiff(Today0, DueDate, Days) < 0 && !IsSettled
+                    ),
+                "Shipments",
+                    AddColumns(
+                        SortByColumns(Filter('04_Shipments', LCItemId = gblLCId), "LatestShipmentDate", SortOrder.Ascending),
+                        "C1", Title,
+                        "C2", Coalesce(TransportDocNumber, "-"),
+                        "C3", Money(ShipmentValue, CurrencyCode),
+                        "C4", "Latest " & DateShort(LatestShipmentDate),
+                        "C5", If(IsBlank(ActualShipmentDate), DaysPhrase(LatestShipmentDate), "Shipped " & DateShort(ActualShipmentDate)),
+                        "St", ShipmentStatus,
+                        "En", "Shipment",
+                        "Fl", !IsShipped && !IsBlank(LatestShipmentDate) && DateDiff(Today0, LatestShipmentDate, Days) < 7
+                    ),
+                "Presentations",
+                    AddColumns(
+                        SortByColumns(Filter('05_Presentations', LCItemId = gblLCId), "PresentationDate", SortOrder.Descending),
+                        "C1", Title,
+                        "C2", DateShort(PresentationDate),
+                        "C3", Money(AmountPresented, CurrencyCode),
+                        "C4", ExaminationStatus,
+                        "C5", If(OpenDiscrepancyCount > 0, OpenDiscrepancyCount & " open discrepancies", "Maturity " & DateShort(MaturityDate)),
+                        "St", PresentationStatus,
+                        "En", "Presentation",
+                        "Fl", OpenDiscrepancyCount > 0
+                    ),
+                "Discrepancies",
+                    AddColumns(
+                        SortByColumns(Filter('06_Discrepancies', LCItemId = gblLCId), "DetectedDate", SortOrder.Descending),
+                        "C1", Title,
+                        "C2", Coalesce(CategoryName, CategoryCode),
+                        "C3", Severity,
+                        "C4", "Detected " & DateShort(DetectedDate),
+                        "C5", If(WaiverRequired && !WaiverReceived, "Waiver outstanding", Coalesce(ResolutionType, "")),
+                        "St", DiscrepancyStatus,
+                        "En", "Discrepancy",
+                        "Fl", IsOpen
+                    ),
+                "Proceeds",
+                    AddColumns(
+                        SortByColumns(Filter('07_Proceeds', LCItemId = gblLCId), "MaturityDate", SortOrder.Ascending),
+                        "C1", Title,
+                        "C2", Money(AmountAccepted, CurrencyCode),
+                        "C3", Money(AmountPaid, CurrencyCode),
+                        "C4", Money(OutstandingProceeds, CurrencyCode),
+                        "C5", "Matures " & DateShort(MaturityDate),
+                        "St", ProceedsStatus,
+                        "En", "Proceeds",
+                        "Fl", !IsSettled && !IsBlank(MaturityDate) && DateDiff(Today0, MaturityDate, Days) < 0
+                    ),
+                "Correspondence",
+                    AddColumns(
+                        SortByColumns(Filter('08_Correspondence', LCItemId = gblLCId), "CorrespondenceDate", SortOrder.Descending),
+                        "C1", Title,
+                        "C2", Direction & " · " & Coalesce(BankName, "-"),
+                        "C3", CorrespondenceType,
+                        "C4", DateShort(CorrespondenceDate),
+                        "C5", If(ActionRequired, "Action due " & DateShort(DueDate), ""),
+                        "St", CorrespondenceStatus,
+                        "En", "Correspondence",
+                        "Fl", ActionRequired && IsOpen
+                    ),
+                "Tasks",
+                    AddColumns(
+                        SortByColumns(Filter('09_Tasks', LCItemId = gblLCId), "DueDate", SortOrder.Ascending),
+                        "C1", Title,
+                        "C2", TaskCategory,
+                        "C3", Coalesce(AssignedTo.DisplayName, "unassigned"),
+                        "C4", Priority,
+                        "C5", "Due " & DateShort(DueDate) & " · " & DaysPhrase(DueDate),
+                        "St", TaskStatus,
+                        "En", "Task",
+                        "Fl", IsOpen && !IsBlank(DueDate) && DateDiff(Today0, DueDate, Days) < 0
+                    ),
+                Blank()
+            )
+        OnSelect: |
+            =Set(gblEditChild, ThisItem);
+            Set(gblFormMode, "Edit");
+            Set(gblChildContext, { LCItemId: gblLCId, LCNumber: gblCurrentLC.LCNumber, InternalLCID: gblCurrentLC.Title, CustomerName: gblCurrentLC.CustomerName, CurrencyCode: gblCurrentLC.CurrencyCode });
+            Switch(
+                gblWorkspaceTab,
+                "Invoices",       Navigate(scrInvoiceForm, ScreenTransition.CoverRight),
+                "Shipments",      Navigate(scrShipmentForm, ScreenTransition.CoverRight),
+                "Presentations",  Navigate(scrPresentationForm, ScreenTransition.CoverRight),
+                "Discrepancies",  Navigate(scrDiscrepancyForm, ScreenTransition.CoverRight),
+                "Proceeds",       Navigate(scrProceedsForm, ScreenTransition.CoverRight),
+                "Correspondence", Navigate(scrCorrespondenceForm, ScreenTransition.CoverRight),
+                "Tasks",          Navigate(scrTaskForm, ScreenTransition.CoverRight)
+            )
+
+        recChildBg As rectangle:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight - 1
+            Fill: =ThemeSurface
+
+        recChildFlag As rectangle:
+            X: =0
+            Y: =0
+            Width: =3
+            Height: =Parent.TemplateHeight - 1
+            Fill: =If(ThisItem.Fl, ThemeDanger, RGBA(0, 0, 0, 0))
+
+        recChildRule As rectangle:
+            X: =0
+            Y: =Parent.TemplateHeight - 1
+            Width: =Parent.TemplateWidth
+            Height: =1
+            Fill: =ThemeBorder
+
+        lblC1 As label:
+            X: =ThemeSpace4
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.20
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.C1
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeAccent
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblC2 As label:
+            X: =Parent.TemplateWidth * 0.21
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.18
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.C2
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblC3 As label:
+            X: =Parent.TemplateWidth * 0.39
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.14
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.C3
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            Color: =ThemeText
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblC4 As label:
+            X: =Parent.TemplateWidth * 0.53
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.14
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.C4
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeText
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblC5 As label:
+            X: =Parent.TemplateWidth * 0.67
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.18
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.C5
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =If(ThisItem.Fl, ThemeDanger, ThemeTextSecondary)
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        badgeChild As cmpStatusBadge:
+            X: =Parent.TemplateWidth - 150 - ThemeSpace4
+            Y: =14
+            Width: =150
+            Height: =24
+            Entity: =ThisItem.En
+            StatusCode: =ThisItem.St
+            BadgeWidth: =150
+
+    emptyChild As cmpEmptyState:
+        X: =ContentX
+        Y: =galChildRecords.Y + 30
+        Width: =ContentWidth
+        Height: =160
+        Visible: =galChildRecords.Visible && IsEmpty(galChildRecords.AllItems)
+        Title: ="No " & Lower(gblWorkspaceTab) & " yet"
+        Body: ="Nothing has been recorded against this LC on this tab."
+        ActionLabel: =If(IsOfficer, btnAddChild.Text, "")
+        OnAction: =Select(btnAddChild)
+
+    # =========================================================================
+    # TAB: DOCUMENTS
+    # The configurable checklist from 20_LCDocumentChecklist (materialised from
+    # 19_DocChecklistTemplates when the LC was registered), plus the files held
+    # against this LC. Nothing about which documents are required is coded here.
+    # =========================================================================
+    lblChecklistHeader As label:
+        X: =ContentX
+        Y: =galTabs.Y + galTabs.Height + ThemeSpace3
+        Width: =ContentWidth - 360
+        Height: =32
+        Text: |
+            ="Document checklist  ·  " &
+             CountRows(Filter(colChecklist, ChecklistStatus = "Complete")) & " of " &
+             CountRows(Filter(colChecklist, IsRequired)) & " required documents complete"
+        Visible: =gblWorkspaceTab = "Documents"
+        Font: =ThemeFont
+        Size: =ThemeSizeHeading
+        FontWeight: =FontWeight.Semibold
+        Color: =ThemeText
+        VerticalAlign: =VerticalAlign.Middle
+        PaddingLeft: =0
+
+    btnUploadDoc As button:
+        X: =ContentX + ContentWidth - 170
+        Y: =lblChecklistHeader.Y
+        Width: =170
+        Height: =32
+        Text: ="Upload document"
+        Visible: =gblWorkspaceTab = "Documents" && IsOfficer
+        Fill: =ThemeAccent
+        HoverFill: =ThemeAccentHover
+        Color: =ThemeTextInverse
+        BorderThickness: =0
+        Font: =ThemeFont
+        Size: =ThemeSizeBody
+        FontWeight: =FontWeight.Semibold
+        RadiusTopLeft: =ThemeRadius
+        RadiusTopRight: =ThemeRadius
+        RadiusBottomLeft: =ThemeRadius
+        RadiusBottomRight: =ThemeRadius
+        OnSelect: |
+            =Set(gblUploadContext, { LCItemId: gblLCId, LCNumber: gblCurrentLC.LCNumber, InternalLCID: gblCurrentLC.Title });
+            Navigate(scrDocumentUpload, ScreenTransition.CoverRight)
+
+    galChecklist As gallery:
+        X: =ContentX
+        Y: =lblChecklistHeader.Y + 40
+        Width: =ContentWidth
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        Visible: =gblWorkspaceTab = "Documents"
+        TemplateSize: =46
+        TemplatePadding: =0
+        DelayItemLoading: =false
+        # Required-and-missing first: the checklist should open on the problem.
+        Items: |
+            =SortByColumns(
+                AddColumns(
+                    colChecklist,
+                    "Rank",
+                    If(ChecklistStatus = "Missing" && IsRequired, 1,
+                       ChecklistStatus = "Pending Review", 2,
+                       ChecklistStatus = "Missing", 3, 4)
+                ),
+                "Rank", SortOrder.Ascending,
+                "SortOrder", SortOrder.Ascending
+            )
+
+        recClBg As rectangle:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight - 1
+            Fill: =ThemeSurface
+
+        recClRule As rectangle:
+            X: =0
+            Y: =Parent.TemplateHeight - 1
+            Width: =Parent.TemplateWidth
+            Height: =1
+            Fill: =ThemeBorder
+
+        icoClState As icon:
+            Icon: |
+                =Switch(
+                    ThisItem.ChecklistStatus,
+                    "Complete", Icon.CheckBadge,
+                    "Pending Review", Icon.Clock,
+                    "Waived", Icon.Hide,
+                    "Not Applicable", Icon.Remove,
+                    Icon.CancelBadge
+                )
+            X: =ThemeSpace4
+            Y: =14
+            Width: =18
+            Height: =18
+            Color: |
+                =Switch(
+                    ThisItem.ChecklistStatus,
+                    "Complete", ThemeSuccess,
+                    "Pending Review", ThemeWarning,
+                    "Waived", ThemeMuted,
+                    "Not Applicable", ThemeMuted,
+                    If(ThisItem.IsRequired, ThemeDanger, ThemeTextMuted)
+                )
+
+        lblClName As label:
+            X: =ThemeSpace4 + 28
+            Y: =0
+            Width: =Parent.TemplateWidth * 0.30
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.DocumentTypeName
+            Font: =ThemeFont
+            Size: =ThemeSizeBody
+            FontWeight: |
+                =If(ThisItem.IsRequired, FontWeight.Semibold, FontWeight.Normal)
+            Color: =ThemeText
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblClRequired As label:
+            X: =Parent.TemplateWidth * 0.36
+            Y: =0
+            Width: =90
+            Height: =Parent.TemplateHeight
+            Text: =If(ThisItem.IsRequired, "Required", "Optional")
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =If(ThisItem.IsRequired, ThemeText, ThemeTextMuted)
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblClCopies As label:
+            X: =Parent.TemplateWidth * 0.44
+            Y: =0
+            Width: =160
+            Height: =Parent.TemplateHeight
+            Text: |
+                =ThisItem.OriginalsReceived & "/" & ThisItem.OriginalsRequired & " originals · " &
+                 ThisItem.CopiesReceived & "/" & ThisItem.CopiesRequired & " copies"
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        chkReceived As checkbox:
+            X: =Parent.TemplateWidth * 0.60
+            Y: =13
+            Width: =110
+            Height: =20
+            Text: ="Received"
+            Default: =ThisItem.IsReceived
+            DisplayMode: =If(IsOfficer, DisplayMode.Edit, DisplayMode.View)
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            # Status is derived from the two checkboxes rather than set by hand, so the
+            # checklist cannot end up saying "Complete" with nothing received.
+            OnCheck: |
+                =Patch(
+                    '20_LCDocumentChecklist',
+                    LookUp('20_LCDocumentChecklist', ID = ThisItem.ID),
+                    {
+                        IsReceived: true,
+                        ReceivedDate: Today0,
+                        ChecklistStatus: If(ThisItem.IsReviewed, "Complete", "Pending Review")
+                    }
+                );
+                ClearCollect(colChecklist, ChecklistFor(gblLCId));
+                Select(btnRecountDocs)
+            OnUncheck: |
+                =Patch(
+                    '20_LCDocumentChecklist',
+                    LookUp('20_LCDocumentChecklist', ID = ThisItem.ID),
+                    { IsReceived: false, ReceivedDate: Blank(), ChecklistStatus: "Missing" }
+                );
+                ClearCollect(colChecklist, ChecklistFor(gblLCId));
+                Select(btnRecountDocs)
+
+        chkReviewed As checkbox:
+            X: =Parent.TemplateWidth * 0.70
+            Y: =13
+            Width: =110
+            Height: =20
+            Text: ="Reviewed"
+            Default: =ThisItem.IsReviewed
+            DisplayMode: =If(CanReviewDocuments && ThisItem.IsReceived, DisplayMode.Edit, DisplayMode.Disabled)
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            OnCheck: |
+                =Patch(
+                    '20_LCDocumentChecklist',
+                    LookUp('20_LCDocumentChecklist', ID = ThisItem.ID),
+                    { IsReviewed: true, ReviewedBy: User(), ReviewedDate: Today0, ChecklistStatus: "Complete" }
+                );
+                ClearCollect(colChecklist, ChecklistFor(gblLCId));
+                Select(btnRecountDocs)
+            OnUncheck: |
+                =Patch(
+                    '20_LCDocumentChecklist',
+                    LookUp('20_LCDocumentChecklist', ID = ThisItem.ID),
+                    { IsReviewed: false, ReviewedBy: Blank(), ReviewedDate: Blank(), ChecklistStatus: "Pending Review" }
+                );
+                ClearCollect(colChecklist, ChecklistFor(gblLCId));
+                Select(btnRecountDocs)
+
+        badgeCl As cmpStatusBadge:
+            X: =Parent.TemplateWidth - 150 - ThemeSpace4
+            Y: =11
+            Width: =150
+            Height: =24
+            Entity: ="Document"
+            StatusCode: |
+                =Switch(
+                    ThisItem.ChecklistStatus,
+                    "Complete", "Accepted", "Pending Review", "Under Review",
+                    "Waived", "Superseded", "Not Applicable", "Superseded", "Received"
+                )
+            BadgeWidth: =150
+
+    # Recomputes the LC's stored missing-document counter after any checklist change.
+    # Hidden control rather than repeated inline: one definition, called from three places.
+    btnRecountDocs As button:
+        X: =-100
+        Y: =-100
+        Width: =1
+        Height: =1
+        Visible: =false
+        Text: =""
+        OnSelect: |
+            =With(
+                { missing: CountRows(Filter(colChecklist, IsRequired = true, IsReceived = false)) },
+                Patch(
+                    '01_ExportLCs',
+                    LookUp('01_ExportLCs', ID = gblLCId),
+                    {
+                        MissingDocumentCount: missing,
+                        RequiresAction: missing > 0 || gblCurrentLC.OpenDiscrepancyCount > 0 ||
+                                        gblCurrentLC.LCStatus in ["Received", "Under Review", "Discrepancy"],
+                        LastActivityDate: Now()
+                    }
+                )
+            );
+            Set(gblCurrentLC, LookUp('01_ExportLCs', ID = gblLCId))
+
+    # =========================================================================
+    # TAB: AUDIT
+    # Partition-filtered so it stays an indexed query as history grows. Critical-field
+    # changes are highlighted, because that is what an auditor actually asks for.
+    # =========================================================================
+    galAudit As gallery:
+        X: =ContentX
+        Y: =galTabs.Y + galTabs.Height + ThemeSpace3
+        Width: =ContentWidth
+        Height: =Parent.Height - Self.Y - ThemeSpace4
+        Visible: =gblWorkspaceTab = "Audit"
+        TemplateSize: =52
+        TemplatePadding: =0
+        DelayItemLoading: =true
+        Items: |
+            =SortByColumns(
+                Filter(
+                    '10_AuditLog',
+                    InternalLCID = gblLCInternalId,
+                    PartitionKey >= Text(DateAdd(Today0, -12, Months), "yyyy-mm")
+                ),
+                "ActionTimestamp", SortOrder.Descending
+            )
+
+        recAudBg As rectangle:
+            X: =0
+            Y: =0
+            Width: =Parent.TemplateWidth
+            Height: =Parent.TemplateHeight - 1
+            Fill: =If(ThisItem.IsCriticalField, ThemeWarningSoft, ThemeSurface)
+
+        recAudRule As rectangle:
+            X: =0
+            Y: =Parent.TemplateHeight - 1
+            Width: =Parent.TemplateWidth
+            Height: =1
+            Fill: =ThemeBorder
+
+        lblAudWhen As label:
+            X: =ThemeSpace4
+            Y: =0
+            Width: =140
+            Height: =Parent.TemplateHeight
+            Text: =Text(ThisItem.ActionTimestamp, "dd mmm yyyy HH:mm")
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblAudWho As label:
+            X: =160
+            Y: =0
+            Width: =180
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.ActionByName
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeText
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblAudAction As label:
+            X: =350
+            Y: =0
+            Width: =160
+            Height: =Parent.TemplateHeight
+            Text: =ThisItem.ActionType
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            FontWeight: =FontWeight.Semibold
+            Color: =ThemeText
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblAudField As label:
+            X: =520
+            Y: =0
+            Width: =180
+            Height: =Parent.TemplateHeight
+            Text: =Coalesce(ThisItem.FieldName, "-")
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeTextSecondary
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+        lblAudChange As label:
+            X: =710
+            Y: =0
+            Width: =Parent.TemplateWidth - 710 - ThemeSpace4
+            Height: =Parent.TemplateHeight
+            Text: |
+                =If(
+                    Len(Coalesce(ThisItem.OldValue, "")) + Len(Coalesce(ThisItem.NewValue, "")) = 0,
+                    Coalesce(ThisItem.ActionComment, ""),
+                    Coalesce(ThisItem.OldValue, "(blank)") & "   to   " & Coalesce(ThisItem.NewValue, "(blank)")
+                )
+            Font: =ThemeFont
+            Size: =ThemeSizeSmall
+            Color: =ThemeText
+            VerticalAlign: =VerticalAlign.Middle
+            PaddingLeft: =0
+
+    emptyAudit As cmpEmptyState:
+        X: =ContentX
+        Y: =galAudit.Y + 30
+        Width: =ContentWidth
+        Height: =160
+        Visible: =gblWorkspaceTab = "Audit" && IsEmpty(galAudit.AllItems)
+        Title: ="No audit entries in the last 12 months"
+        Body: ="Older history is available in 10_AuditLog by partition, or from the admin archive."
+        ActionLabel: =""

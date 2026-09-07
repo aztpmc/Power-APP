@@ -1,0 +1,30 @@
+Title,DocumentTypeCode,DocumentCategory,TargetLibrary,IsDefaultRequired,RequiresOriginal,DefaultCopies,RequiresReview,IsActive,SortOrder
+Original LC,ORIGLC,LC Instrument,ExportLCDocuments,TRUE,TRUE,2,TRUE,TRUE,10
+LC Amendment,LCAMD,LC Instrument,ExportLCDocuments,FALSE,TRUE,2,TRUE,TRUE,20
+SWIFT Advice,SWIFT,LC Instrument,ExportLCDocuments,FALSE,FALSE,1,TRUE,TRUE,30
+Commercial Invoice,CINV,Commercial,ExportLCInvoices,TRUE,TRUE,3,TRUE,TRUE,40
+Packing List,PKGL,Commercial,ExportLCInvoices,TRUE,TRUE,3,TRUE,TRUE,50
+Weight List,WGTL,Commercial,ExportLCInvoices,FALSE,TRUE,2,TRUE,TRUE,60
+Bill of Lading,BL,Transport,ExportLCShippingDocuments,TRUE,TRUE,3,TRUE,TRUE,70
+Air Waybill,AWB,Transport,ExportLCShippingDocuments,FALSE,TRUE,3,TRUE,TRUE,80
+Truck Consignment Note,CMR,Transport,ExportLCShippingDocuments,FALSE,TRUE,2,TRUE,TRUE,90
+Certificate of Origin,COO,Official / Certificate,ExportLCShippingDocuments,TRUE,TRUE,1,TRUE,TRUE,100
+Insurance Certificate,INSC,Insurance,ExportLCShippingDocuments,FALSE,TRUE,2,TRUE,TRUE,110
+Inspection Certificate,INSP,Official / Certificate,ExportLCShippingDocuments,FALSE,TRUE,1,TRUE,TRUE,120
+Certificate of Analysis,COA,Official / Certificate,ExportLCShippingDocuments,FALSE,TRUE,1,TRUE,TRUE,130
+Health Certificate,HLTH,Official / Certificate,ExportLCShippingDocuments,FALSE,TRUE,1,TRUE,TRUE,140
+GMP Certificate,GMP,Official / Certificate,ExportLCShippingDocuments,FALSE,FALSE,1,TRUE,TRUE,150
+Free Sale Certificate,FSC,Official / Certificate,ExportLCShippingDocuments,FALSE,TRUE,1,TRUE,TRUE,160
+Beneficiary Certificate,BENC,Commercial,ExportLCShippingDocuments,FALSE,TRUE,1,TRUE,TRUE,170
+Bill of Exchange / Draft,DRAFT,Commercial,ExportLCDocuments,FALSE,TRUE,1,TRUE,TRUE,180
+Presentation Cover Letter,PRESCL,Bank,ExportLCDocuments,TRUE,TRUE,1,FALSE,TRUE,190
+Bank Correspondence,BANKCORR,Bank,ExportLCBankCorrespondence,FALSE,FALSE,1,FALSE,TRUE,200
+Discrepancy Notice,DISCNOT,Bank,ExportLCBankCorrespondence,FALSE,FALSE,1,TRUE,TRUE,210
+Waiver Request,WAIVREQ,Bank,ExportLCBankCorrespondence,FALSE,FALSE,1,TRUE,TRUE,220
+Acceptance Advice,ACCADV,Bank,ExportLCBankCorrespondence,FALSE,FALSE,1,TRUE,TRUE,230
+Payment Advice,PAYADV,Bank,ExportLCBankCorrespondence,FALSE,FALSE,1,TRUE,TRUE,240
+Charges Advice,CHGADV,Bank,ExportLCBankCorrespondence,FALSE,FALSE,1,FALSE,TRUE,250
+Courier Receipt,CRCPT,Transport,ExportLCDocuments,FALSE,FALSE,1,FALSE,TRUE,260
+Sales Contract,CONTR,Commercial,ExportLCDocuments,FALSE,FALSE,1,FALSE,TRUE,270
+Purchase Order,PO,Commercial,ExportLCDocuments,FALSE,FALSE,1,FALSE,TRUE,280
+Other,OTHER,Internal,ExportLCDocuments,FALSE,FALSE,1,FALSE,TRUE,999
