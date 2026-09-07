@@ -159,9 +159,29 @@ function Ensure-Field {
         $xml = Get-FieldXml -Field $Field
         Add-PnPFieldFromXml -List $ListTitle -FieldXml $xml | Out-Null
         # Indexed="TRUE" in field XML is honoured inconsistently across tenants; assert it explicitly.
-        if ($Field.PSObject.Properties.Name -contains 'indexed' -and $Field.indexed) {
-            try { Set-PnPField -List $ListTitle -Identity $Field.name -Values @{ Indexed = $true } -ErrorAction Stop | Out-Null }
-            catch { Add-Report 'Field' "$ListTitle.$($Field.name)" 'IndexWarning' $_.Exception.Message }
+        # SharePoint cannot index multi-value fields (MultiChoice, multi-value Lookup/User) at all -
+        # skip those rather than let a schema mistake surface as a runtime error.
+        $indexable = $Field.type -notin @('MultiChoice')
+        if ($Field.PSObject.Properties.Name -contains 'indexed' -and $Field.indexed -and $indexable) {
+            # SharePoint Online throttles how many columns on the SAME list can have an index build
+            # requested in quick succession ("the maximum number of columns is currently being
+            # indexed") - transient, so retry with backoff rather than fail a list with 20 indexes.
+            $attempt = 0
+            $indexed = $false
+            do {
+                $attempt++
+                try {
+                    Set-PnPField -List $ListTitle -Identity $Field.name -Values @{ Indexed = $true } -ErrorAction Stop | Out-Null
+                    $indexed = $true
+                }
+                catch {
+                    if ($attempt -ge 4) { Add-Report 'Field' "$ListTitle.$($Field.name)" 'IndexWarning' $_.Exception.Message }
+                    else { Start-Sleep -Seconds ($attempt * 3) }
+                }
+            } while (-not $indexed -and $attempt -lt 4)
+        }
+        elseif ($Field.PSObject.Properties.Name -contains 'indexed' -and $Field.indexed -and -not $indexable) {
+            Add-Report 'Field' "$ListTitle.$($Field.name)" 'IndexSkipped' "$($Field.type) columns cannot be indexed in SharePoint - schema marked this one indexed in error."
         }
         Add-Report 'Field' "$ListTitle.$($Field.name)" 'Created' "Type=$($Field.type)"
     }

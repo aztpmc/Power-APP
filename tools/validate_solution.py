@@ -105,6 +105,20 @@ def main(verbose=False):
           not over_index, ", ".join(over_index))
     check("schema: %d columns across %d objects" % (total_fields, len(all_objects)), True)
 
+    # SharePoint cannot index multi-value columns at all (MultiChoice, and multi-value
+    # Lookup/User if this schema ever adds one) - it rejects the request outright at
+    # provisioning time with "This column type is not supported for indexing." Caught only
+    # on a real run against a live tenant the first time; encoded here so it can't recur silently.
+    NON_INDEXABLE_TYPES = {"MultiChoice"}
+    bad_multi_index = [
+        "%s.%s" % (name, f["name"])
+        for name, obj in all_objects.items()
+        for f in obj["fields"]
+        if f.get("indexed") and f["type"] in NON_INDEXABLE_TYPES
+    ]
+    check("schema: no multi-value column is marked indexed (SharePoint rejects it)",
+          not bad_multi_index, ", ".join(bad_multi_index))
+
     # Choice fields must have choices; defaults must be one of them.
     bad_choice = []
     for name, obj in all_objects.items():

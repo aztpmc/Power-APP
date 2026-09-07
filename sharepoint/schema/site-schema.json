@@ -1124,7 +1124,8 @@
             "Presentation Period",
             "Other"
           ],
-          "indexed": true
+          "indexed": false,
+          "note": "SharePoint cannot index MultiChoice (multi-value) columns at all - this was mistakenly marked indexed and rejected by the platform on first real provisioning run. Filtering on a MultiChoice value is not delegable in Power Fx regardless, so this costs nothing."
         },
         {
           "name": "AmendmentDescription",
