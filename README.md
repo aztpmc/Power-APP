@@ -26,8 +26,9 @@ the scripts that create all of it.
 
 | If you want to | Read |
 |---|---|
+| **Build this tonight, step by step** | [`docs/11-quickstart-at-home.md`](docs/11-quickstart-at-home.md) |
 | Understand the shape of the thing | [`docs/01-architecture.md`](docs/01-architecture.md) |
-| Deploy it | [`docs/07-deployment-runbook.md`](docs/07-deployment-runbook.md) |
+| Deploy it (the longer, fuller version) | [`docs/07-deployment-runbook.md`](docs/07-deployment-runbook.md) |
 | See the design before building it | open [`portal-reference/index.html`](portal-reference/index.html) in a browser |
 | Know what the legacy data needs fixing | [`docs/10-source-data-analysis.md`](docs/10-source-data-analysis.md) |
 | Know what was and was not tested | [`docs/08-testing.md`](docs/08-testing.md) |
@@ -86,19 +87,13 @@ python3 tools/validate_solution.py
 ```
 
 ```powershell
-# 3. Survey the target SharePoint site — read only
-cd sharepoint\scripts
-.\Inspect-Environment.ps1 -SiteUrl https://contoso.sharepoint.com/sites/ExportLCPortal
-
-# 4. Provision (dry run first)
-.\Provision-ExportLCPortal.ps1 -SiteUrl <url> -WhatIf
-.\Provision-ExportLCPortal.ps1 -SiteUrl <url>
-.\Import-MasterData.ps1        -SiteUrl <url>
-.\Set-Permissions.ps1          -SiteUrl <url>
+# 3. Guided SharePoint-side deployment: inspect, provision, master data,
+#    permissions, flow packages — one script, a few Y/n prompts.
+.\Deploy-ExportLCPortal.ps1 -SiteUrl https://contoso.sharepoint.com/sites/ExportLCPortal
 ```
 
-Then follow [`docs/07-deployment-runbook.md`](docs/07-deployment-runbook.md) from Phase 6
-for the app and the flows.
+Then [`docs/11-quickstart-at-home.md`](docs/11-quickstart-at-home.md) for building the
+canvas app in Studio and wiring up the flows — the one part that can't be scripted.
 
 ## What the legacy data turned up
 

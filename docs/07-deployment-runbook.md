@@ -106,28 +106,35 @@ record has no responsible officer, and with it blank they log the notification a
 
 ## Phase 6 — the canvas app
 
-Either pack the source:
+`powerapps/ExportLCPortal/Src/` holds the formula source (`App.fx.yaml`, 9 components, 26
+screens) but not the `CanvasManifest.json` / `DataSources/` / `Connections/` scaffolding
+`pac canvas pack` needs to build a `.msapp` on its own — that scaffolding is tenant-specific
+(it encodes your actual data source connection GUIDs) and a wrong one produces a `.msapp`
+that fails to open with no useful error, so it isn't fabricated in the repo.
 
-```bash
-pac canvas pack --sources powerapps/ExportLCPortal/Src --msapp ExportLCPortal.msapp
-```
-
-then import the `.msapp` in Power Apps Studio.
-
-Or build in Studio directly:
+Two ways to proceed — full walkthrough with copy-paste commands in
+`docs/11-quickstart-at-home.md`:
 
 1. New canvas app, tablet layout.
 2. Add the SharePoint data sources — all 29 lists and 5 libraries.
-3. Enable **Settings → Updates → User-defined functions**.
-4. Paste the `Formulas` block from `App.fx.yaml` into **App → Formulas**, and the `OnStart`
-   block into **App → OnStart**.
-5. Create the 9 components with the input properties listed at the top of each in
-   `Components.fx.yaml`, then paste the child controls.
-6. Create each screen and paste its control tree from `Screens/*.fx.yaml`.
+3. Enable **Settings → Upcoming features → Experimental → User-defined functions**.
+4. Paste the `Formulas:` block from `App.fx.yaml` into **App → Advanced → App.Formulas**,
+   and the `OnStart:` block into **App.OnStart**.
+5. Create the 9 components with the custom properties listed in
+   `Components.fx.yaml`'s `CustomProperties:` blocks, then paste each component's child
+   controls onto its canvas.
+6. Create each screen (name matching the file) and paste its control tree from
+   `Screens/*.fx.yaml` onto the blank canvas.
 7. Add the four app-called flows to the app (`ExportLC-11`, `-12`, `-13`, `-14`).
 
-Screen YAML pastes directly onto a blank screen in Studio — Studio accepts control YAML on
-the clipboard.
+Studio accepts control YAML on the clipboard when a screen or component canvas has focus —
+this is what makes step 5/6 a paste rather than a rebuild.
+
+**Path B — `pac canvas pack`, if you want less manual typing:** build a throwaway blank app
+with the same 29+5 data sources added in Studio, `pac canvas unpack` it to get a *real*
+manifest for your tenant, replace its `Src/` folder with this repo's, then
+`pac canvas pack` it back into a valid `.msapp`. Full commands in
+`docs/11-quickstart-at-home.md`.
 
 ## Phase 7 — flows
 
