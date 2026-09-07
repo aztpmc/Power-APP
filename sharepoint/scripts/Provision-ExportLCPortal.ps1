@@ -278,7 +278,14 @@ foreach ($t in $targets) {
 
     Ensure-List -Definition $def -Template $t.Template | Out-Null
     if ($WhatIfPreference) {
-        foreach ($f in $def.fields) { Add-Report 'Field' "$($def.title).$($f.name)" 'WhatIf:Create' "Type=$($f.type)" }
+        # Get-PnPField is read-only, so checking real existence here is safe even under -WhatIf -
+        # without it, a dry run after a successful provisioning run misleadingly claims it would
+        # create 550 columns that are already there, when a real run would create zero.
+        foreach ($f in $def.fields) {
+            $already = Get-PnPField -List $def.title -Identity $f.name -ErrorAction SilentlyContinue
+            if ($already) { Add-Report 'Field' "$($def.title).$($f.name)" 'Exists' "Type=$($already.TypeAsString)" }
+            else { Add-Report 'Field' "$($def.title).$($f.name)" 'WhatIf:Create' "Type=$($f.type)" }
+        }
         continue
     }
 
