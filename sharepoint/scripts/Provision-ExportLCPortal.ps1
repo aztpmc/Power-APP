@@ -166,6 +166,10 @@ function Ensure-Field {
             # SharePoint Online throttles how many columns on the SAME list can have an index build
             # requested in quick succession ("the maximum number of columns is currently being
             # indexed") - transient, so retry with backoff rather than fail a list with 20 indexes.
+            # The backoff is deliberately generous (up to ~2 minutes total): a small delay wasn't
+            # enough in practice against a real tenant, and this only runs once, ever, per column.
+            $maxAttempts = 6
+            $backoffSeconds = @(5, 10, 15, 25, 35)
             $attempt = 0
             $indexed = $false
             do {
@@ -175,10 +179,17 @@ function Ensure-Field {
                     $indexed = $true
                 }
                 catch {
-                    if ($attempt -ge 4) { Add-Report 'Field' "$ListTitle.$($Field.name)" 'IndexWarning' $_.Exception.Message }
-                    else { Start-Sleep -Seconds ($attempt * 3) }
+                    if ($attempt -ge $maxAttempts) { Add-Report 'Field' "$ListTitle.$($Field.name)" 'IndexWarning' $_.Exception.Message }
+                    else {
+                        Write-Step "  waiting for SharePoint to finish indexing on $ListTitle before retrying $($Field.name) (attempt $attempt/$maxAttempts)..."
+                        Start-Sleep -Seconds $backoffSeconds[$attempt - 1]
+                    }
                 }
-            } while (-not $indexed -and $attempt -lt 4)
+            } while (-not $indexed -and $attempt -lt $maxAttempts)
+            # A short proactive pause after every successful index build, not just on failure -
+            # spaces out consecutive requests on the same list so the ceiling above is rarely hit
+            # in the first place, rather than only reacting to it after the fact.
+            if ($indexed) { Start-Sleep -Milliseconds 1500 }
         }
         elseif ($Field.PSObject.Properties.Name -contains 'indexed' -and $Field.indexed -and -not $indexable) {
             Add-Report 'Field' "$ListTitle.$($Field.name)" 'IndexSkipped' "$($Field.type) columns cannot be indexed in SharePoint - schema marked this one indexed in error."
