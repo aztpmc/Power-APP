@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Export LC Portal — UX reference</title>
+<style>
+/* ---------------------------------------------------------------------------
+   These are the same tokens as App.Formulas in powerapps/ExportLCPortal/Src/App.fx.yaml.
+   Change them here to preview a re-skin, then copy the values across.
+   --------------------------------------------------------------------------- */
+:root{
+  --rail-bg:#0F2B46; --rail-bg-hover:#17395A; --rail-bg-active:#1B4A75;
+  --rail-text:#C3D3E2; --rail-text-active:#fff; --rail-accent:#4DA3FF;
+  --canvas:#F4F6F9; --surface:#fff; --surface-alt:#F8FAFC; --surface-hover:#EEF3F9;
+  --border:#E2E8F0; --border-strong:#CBD5E1;
+  --text:#10202E; --text-2:#5A6B7C; --text-muted:#8A99A8; --text-inv:#fff;
+  --accent:#1B6EC2; --accent-hover:#155BA3; --accent-soft:#E8F1FB;
+  --success:#0F7B3F; --success-soft:#E6F4EC;
+  --warning:#B26A00; --warning-soft:#FDF3E3;
+  --danger:#C2352B;  --danger-soft:#FBEAE9;
+  --progress:#0B6E8F;--progress-soft:#E4F1F5;
+  --muted:#6B7785;   --muted-soft:#EFF2F5;
+  --font:"Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --radius:6px; --rail-w:232px; --topbar-h:56px; --row-h:44px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);font-size:13px;color:var(--text);background:var(--canvas);
+     -webkit-font-smoothing:antialiased}
+.app{display:flex;min-height:100vh}
+
+/* rail ------------------------------------------------------------------ */
+.rail{width:var(--rail-w);background:var(--rail-bg);flex-shrink:0;display:flex;
+      flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{padding:16px 18px 6px}
+.brand h1{font-size:19px;font-weight:600;color:#fff;letter-spacing:-.01em}
+.brand p{font-size:10px;color:var(--rail-accent);margin-top:2px}
+.nav{margin-top:18px;flex:1;overflow:auto}
+.nav a{display:flex;align-items:center;gap:12px;height:40px;padding:0 18px;
+       color:var(--rail-text);text-decoration:none;font-size:13px;position:relative}
+.nav a:hover{background:var(--rail-bg-hover)}
+.nav a.on{background:var(--rail-bg-active);color:var(--rail-text-active);font-weight:600}
+.nav a.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--rail-accent)}
+.nav .ico{width:18px;text-align:center;opacity:.85;font-size:14px}
+.nav .badge{margin-left:auto;background:var(--danger);color:#fff;font-size:10px;font-weight:600;
+            border-radius:8px;padding:1px 7px;min-width:20px;text-align:center}
+.railfoot{border-top:1px solid var(--rail-bg-hover);padding:14px 18px;display:flex;gap:12px;align-items:center}
+.railfoot .who{line-height:1.3}
+.railfoot .who b{display:block;color:#fff;font-size:11.5px;font-weight:600}
+.railfoot .who span{color:var(--rail-text);font-size:10px}
+
+/* main ------------------------------------------------------------------ */
+.main{flex:1;min-width:0;padding:0 var(--s5) var(--s5)}
+.topbar{height:var(--topbar-h);display:flex;align-items:center;gap:var(--s4);
+        border-bottom:1px solid var(--border)}
+.topbar .titles{flex:1;min-width:0}
+.topbar h2{font-size:19px;font-weight:600;letter-spacing:-.01em}
+.topbar .crumb{font-size:11.5px;color:var(--text-muted);margin-top:1px}
+.search{width:290px;height:32px;border:1px solid var(--border-strong);border-radius:var(--radius);
+        padding:0 var(--s3);font:inherit;font-size:13px;background:#fff}
+.search:focus{outline:none;border-color:var(--accent)}
+.btn{height:32px;padding:0 14px;border-radius:var(--radius);border:1px solid var(--border-strong);
+     background:var(--surface);color:var(--text-2);font:inherit;font-size:12px;cursor:pointer}
+.btn:hover{background:var(--surface-hover)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.primary:hover{background:var(--accent-hover)}
+
+/* tabs across the reference itself -------------------------------------- */
+.viewtabs{display:flex;gap:2px;margin:var(--s4) 0 0}
+.viewtabs button{background:none;border:none;border-bottom:3px solid transparent;padding:8px 16px;
+                 font:inherit;font-size:13px;color:var(--text-2);cursor:pointer}
+.viewtabs button.on{color:var(--accent);font-weight:600;border-bottom-color:var(--accent)}
+.view{display:none;padding-top:var(--s4)}
+.view.on{display:block}
+
+/* chips ----------------------------------------------------------------- */
+.chips{display:flex;gap:var(--s2);flex-wrap:wrap;margin-bottom:var(--s3)}
+.chip{height:30px;padding:0 14px;border-radius:15px;border:1px solid var(--border-strong);
+      background:var(--surface);color:var(--text-2);font-size:11.5px;cursor:pointer;
+      display:inline-flex;align-items:center}
+.chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+
+/* kpi ------------------------------------------------------------------- */
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:var(--s3)}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+     padding:var(--s3) var(--s4);position:relative;cursor:pointer;overflow:hidden}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent)}
+.kpi:hover{border-color:var(--accent);background:var(--accent-soft)}
+.kpi.urgent{background:#FDF6F5;border-color:#EBC4C0}
+.kpi.urgent::before{background:var(--danger)}
+.kpi .cap{font-size:10px;font-weight:600;color:var(--text-2);text-transform:uppercase;letter-spacing:.03em}
+.kpi .val{font-size:26px;font-weight:600;margin:2px 0 0;letter-spacing:-.02em}
+.kpi.urgent .val{color:var(--danger)}
+.kpi .sub{font-size:11px;color:var(--text-muted)}
+.kpi[data-accent=warn]::before{background:var(--warning)}
+.kpi[data-accent=prog]::before{background:var(--progress)}
+.kpi[data-accent=ok]::before{background:var(--success)}
+
+/* cards & tables -------------------------------------------------------- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-top:var(--s4)}
+.card>header{display:flex;align-items:flex-start;gap:var(--s3);padding:var(--s3) var(--s4);
+             border-bottom:1px solid var(--border)}
+.card>header h3{font-size:15px;font-weight:600}
+.card>header p{font-size:11.5px;color:var(--text-muted);margin-top:1px}
+.card>header .act{margin-left:auto;color:var(--accent);font-size:11.5px;font-weight:600;cursor:pointer}
+table{width:100%;border-collapse:collapse}
+thead th{background:var(--surface-alt);border-bottom:1px solid var(--border);text-align:left;
+         padding:9px var(--s3);font-size:11.5px;font-weight:600;color:var(--text-2);white-space:nowrap}
+thead th.num{text-align:right}
+tbody td{border-bottom:1px solid var(--border);padding:0 var(--s3);height:var(--row-h);
+         font-size:12.5px;white-space:nowrap}
+tbody td.num{text-align:right;font-variant-numeric:tabular-nums}
+tbody tr{position:relative}
+tbody tr:hover{background:var(--surface-hover)}
+tbody tr td:first-child{border-left:3px solid transparent}
+tbody tr.f-danger td:first-child{border-left-color:var(--danger)}
+tbody tr.f-warn td:first-child{border-left-color:var(--warning)}
+.lc{color:var(--accent);font-weight:600}
+.dim{color:var(--text-2)}
+.mut{color:var(--text-muted);font-size:11.5px}
+.strong{font-weight:600}
+.t-danger{color:var(--danger);font-weight:600}
+.t-warn{color:var(--warning);font-weight:600}
+
+/* badges ---------------------------------------------------------------- */
+.badge{display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:11px;
+       font-size:10px;font-weight:600;border:1px solid transparent;white-space:nowrap}
+.b-ok{background:var(--success-soft);color:var(--success);border-color:#B9DCC8}
+.b-warn{background:var(--warning-soft);color:var(--warning);border-color:#EBD5AE}
+.b-danger{background:var(--danger-soft);color:var(--danger);border-color:#EFC3BF}
+.b-info{background:var(--accent-soft);color:var(--accent);border-color:#BFD8F1}
+.b-prog{background:var(--progress-soft);color:var(--progress);border-color:#B7D9E3}
+.b-mut{background:var(--muted-soft);color:var(--muted);border-color:#D8DEE4}
+
+/* workspace ------------------------------------------------------------- */
+.wshead{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+        padding:var(--s4) var(--s5)}
+.wshead .top{display:flex;align-items:flex-start;gap:var(--s4)}
+.wshead h3{font-size:19px;font-weight:600}
+.wshead .refs{font-size:11.5px;color:var(--text-muted);margin-top:3px}
+.wshead .banks{font-size:11.5px;color:var(--text-2);margin-top:2px}
+.wshead .right{margin-left:auto;text-align:right}
+.facts{display:grid;grid-template-columns:repeat(5,1fr);gap:var(--s4);margin-top:var(--s4)}
+.fact .cap{font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em}
+.fact .val{font-size:15px;font-weight:600;margin-top:2px}
+.fact .sub{font-size:10px;color:var(--text-muted);margin-top:1px}
+.stages{display:flex;margin:var(--s3) 0 0;background:var(--surface);border:1px solid var(--border);
+        border-radius:var(--radius);padding:var(--s3) var(--s5) var(--s2)}
+.stage{flex:1;text-align:center;position:relative}
+.stage .line{position:absolute;top:8px;left:0;right:0;height:2px;background:var(--border)}
+.stage.done .line,.stage.now .line{background:var(--accent)}
+.stage .dot{position:relative;width:16px;height:16px;border-radius:50%;margin:0 auto;
+            background:var(--surface);border:2px solid var(--border-strong);z-index:1}
+.stage.done .dot{background:var(--accent);border-color:var(--accent)}
+.stage.now .dot{background:var(--accent);border-color:var(--accent);
+                box-shadow:0 0 0 4px rgba(27,110,194,.25)}
+.stage span{display:block;margin-top:8px;font-size:11px;color:var(--text-muted)}
+.stage.done span{color:var(--text)}
+.stage.now span{color:var(--accent);font-weight:600}
+.wstabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-top:var(--s3);overflow-x:auto}
+.wstabs button{background:none;border:none;border-bottom:3px solid transparent;padding:10px 14px;
+               font:inherit;font-size:11.5px;color:var(--text-2);cursor:pointer;white-space:nowrap}
+.wstabs button.on{color:var(--accent);font-weight:600;border-bottom-color:var(--accent)}
+.wstabs .n{display:inline-block;margin-left:5px;background:var(--muted-soft);color:var(--text-2);
+           border-radius:8px;padding:0 5px;font-size:10px}
+.alerts{margin-top:var(--s3);display:flex;flex-direction:column;gap:var(--s2)}
+.alert{display:flex;align-items:center;gap:var(--s3);border-radius:var(--radius);
+       padding:10px var(--s3);font-size:12.5px;font-weight:600;border-left:3px solid}
+.alert .go{margin-left:auto;font-weight:400;font-size:11.5px;border:1px solid var(--border-strong);
+           background:rgba(255,255,255,.65);border-radius:4px;padding:3px 10px;cursor:pointer;color:var(--text)}
+.a-danger{background:var(--danger-soft);color:var(--danger);border-color:var(--danger)}
+.a-warn{background:var(--warning-soft);color:var(--warning);border-color:var(--warning)}
+.a-info{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:var(--s4)}
+.kv{display:flex;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+.kv:last-child{border-bottom:none}
+.kv dt{width:150px;color:var(--text-2);flex-shrink:0}
+.kv dd{font-weight:500}
+.kv.em dd{font-weight:600}
+.note{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);
+      border-radius:var(--radius);padding:var(--s3) var(--s4);margin-bottom:var(--s4);
+      font-size:12.5px;color:var(--text-2);line-height:1.55}
+.note b{color:var(--text)}
+@media(max-width:1280px){.kpis{grid-template-columns:repeat(4,1fr)}.cols2{grid-template-columns:1fr}
+  .facts{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:900px){
+  .rail{width:60px}.brand h1{font-size:13px}.brand p,.nav a span.lbl,.railfoot .who{display:none}
+  .nav a{justify-content:center;padding:0}.nav .badge{display:none}
+  .kpis{grid-template-columns:repeat(2,1fr)}.facts{grid-template-columns:repeat(2,1fr)}
+  .search{display:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><h1>Export LC Portal</h1><p>Trade Finance Operations</p></div>
+    <nav class="nav">
+      <a href="#" class="on" data-go="dash"><i class="ico">⌂</i><span class="lbl">Home</span></a>
+      <a href="#" data-go="reg"><i class="ico">▤</i><span class="lbl">Export LCs</span><span class="badge">7</span></a>
+      <a href="#"><i class="ico">₪</i><span class="lbl">Invoices</span></a>
+      <a href="#"><i class="ico">⇢</i><span class="lbl">Shipments</span></a>
+      <a href="#"><i class="ico">⇧</i><span class="lbl">Presentations</span></a>
+      <a href="#"><i class="ico">▣</i><span class="lbl">Documents</span></a>
+      <a href="#"><i class="ico">⚠</i><span class="lbl">Discrepancies</span><span class="badge">3</span></a>
+      <a href="#"><i class="ico">◈</i><span class="lbl">Proceeds</span></a>
+      <a href="#"><i class="ico">✉</i><span class="lbl">Correspondence</span></a>
+      <a href="#"><i class="ico">✓</i><span class="lbl">Tasks</span><span class="badge">5</span></a>
+      <a href="#"><i class="ico">▦</i><span class="lbl">Reports</span></a>
+      <a href="#"><i class="ico">⚙</i><span class="lbl">Administration</span></a>
+    </nav>
+    <div class="railfoot"><i class="ico" style="color:var(--rail-accent)">◉</i>
+      <div class="who"><b>Treasury Officer</b><span>Officer</span></div></div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="titles">
+        <h2 id="pgTitle">Good morning, Treasury</h2>
+        <div class="crumb" id="pgCrumb">Home · Monday 7 September 2026</div>
+      </div>
+      <input class="search" placeholder="Search LC, customer, invoice, presentation…">
+      <button class="btn primary">Register LC</button>
+    </div>
+
+    <div class="viewtabs">
+      <button class="on" data-view="dash">Dashboard</button>
+      <button data-view="reg">LC register</button>
+      <button data-view="ws">LC workspace</button>
+    </div>
+
+    <!-- DASHBOARD -->
+    <section class="view on" id="v-dash">
+      <div class="note">
+        <b>What this file is.</b> A browser rendering of the portal design, using the same
+        theme tokens as <code>App.fx.yaml</code>. It exists so the look can be agreed before
+        anything is built in Studio. The figures are the real ones extracted from
+        <code>LC Master Export 2026.xlsx</code>.
+      </div>
+      <div class="chips" style="margin-bottom:var(--s3)">
+        <button class="chip on">Whole book</button><button class="chip">My LCs</button>
+        <span style="align-self:center;margin-left:var(--s3);font-size:11.5px;color:var(--text-muted)">
+          Figures as at 07 Sep, 07:12</span>
+        <button class="btn" style="margin-left:auto">Refresh</button>
+      </div>
+      <div class="kpis">
+        <div class="kpi" data-accent=""><div class="cap">Active LCs</div><div class="val">20</div><div class="sub">$10.9M on the book</div></div>
+        <div class="kpi" data-accent=""><div class="cap">New LCs</div><div class="val">6</div><div class="sub">last 30 days</div></div>
+        <div class="kpi" data-accent="warn"><div class="cap">Pending Action</div><div class="val">7</div><div class="sub">needs an officer</div></div>
+        <div class="kpi urgent"><div class="cap">Expiring Soon</div><div class="val">4</div><div class="sub">$1.2M · within 30 days</div></div>
+        <div class="kpi urgent"><div class="cap">Shipment Deadline</div><div class="val">3</div><div class="sub">within 14 days</div></div>
+        <div class="kpi urgent"><div class="cap">Shipment Overdue</div><div class="val">1</div><div class="sub">past latest ship date</div></div>
+        <div class="kpi" data-accent="warn"><div class="cap">Pending Amendments</div><div class="val">2</div><div class="sub">not applied to the LC</div></div>
+        <div class="kpi" data-accent="warn"><div class="cap">Missing Documents</div><div class="val">5</div><div class="sub">LCs with docs outstanding</div></div>
+        <div class="kpi" data-accent="prog"><div class="cap">Pending Presentations</div><div class="val">4</div><div class="sub">$0.9M ready to present</div></div>
+        <div class="kpi urgent"><div class="cap">Open Discrepancies</div><div class="val">3</div><div class="sub">unresolved bank findings</div></div>
+        <div class="kpi" data-accent="prog"><div class="cap">Outstanding Proceeds</div><div class="val">9</div><div class="sub">$2.39M accepted, unpaid</div></div>
+        <div class="kpi" data-accent="ok"><div class="cap">Total Exposure</div><div class="val">$2.4M</div><div class="sub">outstanding, all open LCs</div></div>
+      </div>
+
+      <div class="cols2">
+        <div class="card">
+          <header><div><h3>Needs attention</h3><p>Open LCs closest to a deadline</p></div>
+            <span class="act">Open register</span></header>
+          <table><tbody>
+            <tr class="f-danger"><td><span class="lc">26/BMLCU/41031</span><div class="mut">Al Hashar Pharmacy Llc</div></td>
+              <td class="num"><span class="strong">$775,682.65</span><div class="mut">outstanding</div></td>
+              <td><span class="t-danger">Expires in 4 days</span><div class="mut" style="color:var(--danger)">2 docs missing</div></td>
+              <td><span class="badge b-prog">Partially Drawn</span></td></tr>
+            <tr class="f-warn"><td><span class="lc">OLCT260054</span><div class="mut">Al Hashar Pharmacy Llc</div></td>
+              <td class="num"><span class="strong">$40,746.26</span><div class="mut">outstanding</div></td>
+              <td><span class="t-warn">Expires in 11 days</span></td>
+              <td><span class="badge b-ok">Active</span></td></tr>
+            <tr class="f-danger"><td><span class="lc">OLCD001260151</span><div class="mut">Al Hikma Fzco Iraq</div></td>
+              <td class="num"><span class="strong">$87.26</span><div class="mut">outstanding</div></td>
+              <td><span class="t-danger">Expires in 6 days</span><div class="mut" style="color:var(--danger)">1 disc.</div></td>
+              <td><span class="badge b-danger">Discrepancy</span></td></tr>
+            <tr class="f-warn"><td><span class="lc">777LC09261550003</span><div class="mut">Samt For Medical Supplies</div></td>
+              <td class="num"><span class="strong">$753,141.00</span><div class="mut">outstanding</div></td>
+              <td><span class="t-warn">Ships in 9 days</span></td>
+              <td><span class="badge b-prog">Shipment Pending</span></td></tr>
+            <tr><td><span class="lc">TF2606933771</span><div class="mut">Zenith Pharma</div></td>
+              <td class="num"><span class="strong">$1,418,481.50</span><div class="mut">outstanding</div></td>
+              <td><span class="dim">Expires in 73 days</span></td>
+              <td><span class="badge b-ok">Active</span></td></tr>
+          </tbody></table>
+        </div>
+
+        <div class="card">
+          <header><div><h3>Recent activity</h3><p>Last changes across the portfolio</p></div>
+            <span class="act">Full audit</span></header>
+          <table><tbody>
+            <tr><td><span class="strong">OLCT260073 · Amount Change</span>
+              <div class="mut">LCAmount: 620,000.00 to 648,430.58</div>
+              <div class="mut">Treasury Officer · 07 Sep 09:14</div></td></tr>
+            <tr><td><span class="strong">91238969 · Create</span>
+              <div class="mut">Invoice added under ELC/2026/00832QA</div>
+              <div class="mut">Treasury Officer · 07 Sep 08:52</div></td></tr>
+            <tr><td><span class="strong">OLCD001260151 · Status Change</span>
+              <div class="mut">LCStatus: Under Examination to Discrepancy</div>
+              <div class="mut">Reviewer · 06 Sep 16:30</div></td></tr>
+            <tr><td><span class="strong">ELC26BH00911 · Document Upload</span>
+              <div class="mut">Bill of Lading into ExportLCShippingDocuments</div>
+              <div class="mut">Treasury Officer · 06 Sep 14:07</div></td></tr>
+            <tr><td><span class="strong">26/BMLCU/41321 · Amendment Applied</span>
+              <div class="mut">ExpiryDate: 05 Jun 2026 to 30 Jun 2026</div>
+              <div class="mut">Treasury Manager · 06 Sep 11:22</div></td></tr>
+          </tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- REGISTER -->
+    <section class="view" id="v-reg">
+      <div class="chips">
+        <button class="chip on">All open</button><button class="chip">My LCs</button>
+        <button class="chip">Pending action</button><button class="chip">Expiring soon</button>
+        <button class="chip">Shipment due</button><button class="chip">Missing docs</button>
+        <button class="chip">Discrepancies</button><button class="chip">Include closed</button>
+      </div>
+      <div class="card" style="margin-top:0;padding:var(--s3) var(--s4);display:flex;gap:var(--s2);flex-wrap:wrap">
+        <input class="search" style="width:260px" placeholder="LC number, our reference, customer, applicant">
+        <select class="btn" style="width:160px"><option>Status: all</option><option>Active</option><option>Discrepancy</option></select>
+        <select class="btn" style="width:200px"><option>Customer: all</option><option>Al Hashar Pharmacy Llc</option></select>
+        <select class="btn" style="width:180px"><option>Issuing bank: all</option><option>BANK MUSCAT OMAN</option></select>
+        <button class="btn" style="margin-left:auto">More filters</button><button class="btn">Clear all</button>
+      </div>
+      <div style="display:flex;align-items:center;margin:var(--s3) 0 var(--s2)">
+        <span class="mut">Showing 8 of 50 per page · page 1</span>
+        <span style="margin-left:auto;display:flex;gap:var(--s2)">
+          <button class="btn" disabled>Previous</button><button class="btn">Next</button></span>
+      </div>
+      <div class="card" style="margin-top:0">
+      <table>
+        <thead><tr>
+          <th>LC Number ▲</th><th>Customer</th><th>Issuing Bank</th><th>Ccy</th>
+          <th class="num">LC Amount</th><th class="num">Outstanding</th>
+          <th>Received</th><th>Latest Ship</th><th>Expiry</th><th>Status</th><th>Updated</th>
+        </tr></thead>
+        <tbody>
+          <tr class="f-danger"><td><span class="lc">26/BMLCU/41031</span></td><td>Al Hashar Pharmacy Llc</td><td class="dim">BANK MUSCAT OMAN</td><td class="mut">USD</td>
+            <td class="num">775,682.65</td><td class="num strong">775,682.65</td><td class="dim">26 Mar 2026</td>
+            <td class="t-danger">15 Apr 2026</td><td class="t-danger">06 May 2026</td><td><span class="badge b-prog">Partially Drawn</span></td><td class="mut">07 Sep</td></tr>
+          <tr class="f-danger"><td><span class="lc">OLCD001260151</span></td><td>Al Hikma Fzco Iraq</td><td class="dim">INT. DEV. BANK</td><td class="mut">USD</td>
+            <td class="num">770,487.61</td><td class="num strong">87.26</td><td class="dim">04 May 2026</td>
+            <td class="t-warn">11 Jul 2026</td><td class="t-danger">26 Jul 2026</td><td><span class="badge b-danger">Discrepancy</span></td><td class="mut">06 Sep</td></tr>
+          <tr class="f-warn"><td><span class="lc">777LC09261550003</span></td><td>Samt For Medical Supplies</td><td class="dim">JUMHOURIA BANK</td><td class="mut">USD</td>
+            <td class="num">753,141.00</td><td class="num strong">753,141.00</td><td class="dim">04 Jun 2026</td>
+            <td class="t-warn">13 Aug 2026</td><td class="dim">02 Sep 2026</td><td><span class="badge b-prog">Shipment Pending</span></td><td class="mut">05 Sep</td></tr>
+          <tr><td><span class="lc">TF2606933771</span></td><td>Zenith Pharma</td><td class="dim">BANQUE POPULAIRE DE</td><td class="mut">USD</td>
+            <td class="num">2,881,945.35</td><td class="num strong">1,418,481.50</td><td class="dim">10 Mar 2026</td>
+            <td class="dim">30 Oct 2026</td><td class="dim">19 Nov 2026</td><td><span class="badge b-ok">Active</span></td><td class="mut">03 Sep</td></tr>
+          <tr class="f-warn"><td><span class="lc">OLCT260073</span></td><td>Al Hashar Pharmacy Llc</td><td class="dim">BANK DHOFAR</td><td class="mut">USD</td>
+            <td class="num">648,430.58</td><td class="num strong">648,430.58</td><td class="dim">22 Jun 2026</td>
+            <td class="t-warn">15 Jul 2026</td><td class="dim">05 Aug 2026</td><td><span class="badge b-info">Under Review</span></td><td class="mut">07 Sep</td></tr>
+          <tr><td><span class="lc">AB1000ILC0132126</span></td><td>Tracon Trading Plc</td><td class="dim">AWASH BANK</td><td class="mut">USD</td>
+            <td class="num">563,636.54</td><td class="num strong">123,035.97</td><td class="dim">20 May 2026</td>
+            <td class="dim">20 Jul 2026</td><td class="dim">17 Aug 2026</td><td><span class="badge b-prog">Partially Drawn</span></td><td class="mut">02 Sep</td></tr>
+          <tr><td><span class="lc">GDAIBDIMP0083/26</span></td><td>Kare Pharmaceutical Plc</td><td class="dim">GADAABANK</td><td class="mut">USD</td>
+            <td class="num">475,381.73</td><td class="num" style="color:var(--text-muted)">0.00</td><td class="dim">25 Mar 2026</td>
+            <td class="dim">01 Jun 2026</td><td class="dim">22 Jun 2026</td><td><span class="badge b-info">Fully Drawn</span></td><td class="mut">28 Aug</td></tr>
+          <tr class="f-warn"><td><span class="lc">ILC310/159/26</span></td><td>El Hakeem For Importing Pharma…</td><td class="dim">ALWAHA BANK</td><td class="mut">USD</td>
+            <td class="num">148,875.10</td><td class="num strong">148,875.10</td><td class="dim">24 May 2026</td>
+            <td class="dim">23 Aug 2026</td><td class="dim">23 Aug 2026</td><td><span class="badge b-warn">Expired</span></td><td class="mut">01 Sep</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+
+    <!-- WORKSPACE -->
+    <section class="view" id="v-ws">
+      <div class="wshead">
+        <div class="top">
+          <div>
+            <h3>Al Hashar Pharmacy Llc</h3>
+            <div class="refs">LC-2026-0013 · our ref 2026/ILC/3405 · Oman</div>
+            <div class="banks">Issued by BANK MUSCAT OMAN · advised through BANK MUSCAT SA</div>
+          </div>
+          <div class="right">
+            <span class="badge b-prog" style="height:26px;padding:0 14px">Partially Drawn</span>
+            <div class="mut" style="margin-top:6px">Responsible: Treasury Officer</div>
+          </div>
+        </div>
+        <div class="facts">
+          <div class="fact"><div class="cap">LC Amount</div><div class="val">$775,682.65</div><div class="sub">USD</div></div>
+          <div class="fact"><div class="cap">Utilised</div><div class="val">$0.00</div><div class="sub">0% drawn</div></div>
+          <div class="fact"><div class="cap">Outstanding</div><div class="val" style="color:var(--success)">$775,682.65</div><div class="sub">available to draw</div></div>
+          <div class="fact"><div class="cap">Latest Shipment</div><div class="val" style="color:var(--danger)">15 Apr 2026</div><div class="sub">145 days ago</div></div>
+          <div class="fact"><div class="cap">Expiry</div><div class="val" style="color:var(--danger)">06 May 2026</div><div class="sub">124 days ago · Saudi Arabia</div></div>
+        </div>
+      </div>
+
+      <div class="stages">
+        <div class="stage done"><div class="line"></div><div class="dot"></div><span>Received</span></div>
+        <div class="stage done"><div class="line"></div><div class="dot"></div><span>Reviewed</span></div>
+        <div class="stage done"><div class="line"></div><div class="dot"></div><span>Active</span></div>
+        <div class="stage done"><div class="line"></div><div class="dot"></div><span>Shipment</span></div>
+        <div class="stage done"><div class="line"></div><div class="dot"></div><span>Presentation</span></div>
+        <div class="stage now"><div class="line"></div><div class="dot"></div><span>Examination</span></div>
+        <div class="stage"><div class="line"></div><div class="dot"></div><span>Acceptance</span></div>
+        <div class="stage"><div class="line"></div><div class="dot"></div><span>Payment</span></div>
+        <div class="stage"><div class="line"></div><div class="dot"></div><span>Closed</span></div>
+      </div>
+
+      <div class="wstabs">
+        <button class="on">Overview</button><button>LC Details</button>
+        <button>Amendments<span class="n">1</span></button><button>Invoices<span class="n">2</span></button>
+        <button>Shipments</button><button>Documents<span class="n">2</span></button>
+        <button>Presentations</button><button>Discrepancies<span class="n">1</span></button>
+        <button>Proceeds</button><button>Correspondence</button><button>Tasks<span class="n">3</span></button>
+        <button>Audit</button>
+      </div>
+
+      <div class="alerts">
+        <div class="alert a-danger">LC expired 124 days ago on 06 May 2026</div>
+        <div class="alert a-danger">Latest shipment date passed 145 days ago
+          <button class="go">Open shipments</button></div>
+        <div class="alert a-warn">2 required documents are missing
+          <button class="go">Open checklist</button></div>
+        <div class="alert a-danger">1 discrepancy is open
+          <button class="go">Open discrepancies</button></div>
+        <div class="alert a-info">Proceeds outstanding: $775,682.65
+          <button class="go">Open proceeds</button></div>
+      </div>
+
+      <div class="cols2">
+        <div class="card">
+          <header><div><h3>Financial position</h3><p>All figures in USD</p></div><span class="act">Proceeds</span></header>
+          <div style="padding:var(--s2) var(--s4) var(--s3)">
+            <dl class="kv"><dt>LC amount</dt><dd>$775,682.65</dd></dl>
+            <dl class="kv"><dt>Maximum amount</dt><dd>$775,682.65</dd></dl>
+            <dl class="kv"><dt>Utilised</dt><dd>$0.00</dd></dl>
+            <dl class="kv em"><dt>Outstanding</dt><dd>$775,682.65</dd></dl>
+            <dl class="kv"><dt>Paid to date</dt><dd>$0.00</dd></dl>
+          </div>
+        </div>
+        <div class="card">
+          <header><div><h3>Key dates</h3><p>Deadlines driving the credit</p></div><span class="act">LC details</span></header>
+          <div style="padding:var(--s2) var(--s4) var(--s3)">
+            <dl class="kv"><dt>Received</dt><dd>26 Mar 2026</dd></dl>
+            <dl class="kv"><dt>Issued</dt><dd>26 Mar 2026</dd></dl>
+            <dl class="kv em"><dt>Latest shipment</dt><dd>15 Apr 2026 · 145 days ago</dd></dl>
+            <dl class="kv em"><dt>Expiry</dt><dd>06 May 2026 · 124 days ago</dd></dl>
+            <dl class="kv"><dt>Presentation period</dt><dd>21 days from shipment</dd></dl>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <header><div><h3>Outstanding actions</h3><p>Open tasks and correspondence awaiting a response</p></div>
+          <span class="act">New task</span></header>
+        <table><tbody>
+          <tr><td><span class="strong">Chase issuing bank on discrepancy notice</span>
+              <div class="mut">Bank Follow-up · Treasury Officer</div></td>
+            <td><span class="t-danger">Due 02 Sep 2026 · 5 days ago</span></td>
+            <td style="text-align:right"><span class="badge b-prog">In Progress</span></td></tr>
+          <tr><td><span class="strong">Obtain certificate of origin (legalised)</span>
+              <div class="mut">Document Collection · Treasury Officer</div></td>
+            <td><span class="t-warn">Due 09 Sep 2026 · in 2 days</span></td>
+            <td style="text-align:right"><span class="badge b-mut">Not Started</span></td></tr>
+          <tr><td><span class="strong">Request applicant waiver for late presentation</span>
+              <div class="mut">Discrepancy Resolution · Treasury Manager</div></td>
+            <td><span class="dim">Due 12 Sep 2026 · in 5 days</span></td>
+            <td style="text-align:right"><span class="badge b-warn">Waiting</span></td></tr>
+        </tbody></table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+// Reference-only interactivity: switch between the three views.
+const titles = {
+  dash: ["Good morning, Treasury", "Home · Monday 7 September 2026"],
+  reg:  ["Export LCs", "Export LCs · All open"],
+  ws:   ["26/BMLCU/41031", "Export LCs / LC-2026-0013 / Overview"]
+};
+function show(id){
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'v'+'-'+id));
+  document.querySelectorAll('.viewtabs button').forEach(b => b.classList.toggle('on', b.dataset.view === id));
+  document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('on',
+      (a.dataset.go === id) || (id === 'ws' && a.dataset.go === 'reg')));
+  document.getElementById('pgTitle').textContent = titles[id][0];
+  document.getElementById('pgCrumb').textContent = titles[id][1];
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll('.viewtabs button').forEach(b => b.onclick = () => show(b.dataset.view));
+document.querySelectorAll('.nav a[data-go]').forEach(a =>
+  a.onclick = e => { e.preventDefault(); show(a.dataset.go); });
+document.querySelectorAll('.kpi').forEach(k => k.onclick = () => show('reg'));
+document.querySelectorAll('#v-reg tbody tr').forEach(r => r.onclick = () => show('ws'));
+document.querySelectorAll('.chip').forEach(c => c.onclick = () => {
+  document.querySelectorAll('.chip').forEach(x => x.classList.remove('on')); c.classList.add('on');
+});
+document.querySelectorAll('.wstabs button').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.wstabs button').forEach(x => x.classList.remove('on')); t.classList.add('on');
+});
+</script>
+</body>
+</html>
