@@ -180,10 +180,8 @@ foreach ($listTitle in $APPEND_ONLY_LISTS) {
 Write-Host ''
 Write-Host '6. Verification' -ForegroundColor Yellow
 $report = foreach ($l in ($schema.lists + $schema.libraries)) {
-    $list = Get-PnPList -Identity $l.title -ErrorAction SilentlyContinue
+    $list = Get-PnPList -Identity $l.title -Includes HasUniqueRoleAssignments -ErrorAction SilentlyContinue
     if (-not $list) { continue }
-    $list.Context.Load($list.HasUniqueRoleAssignments)
-    $list.Context.ExecuteQuery()
     [pscustomobject]@{
         List             = $l.title
         UniquePermissions = $list.HasUniqueRoleAssignments
