@@ -205,3 +205,4 @@ $script:Log | Export-Csv -Path $out -NoTypeInformation -Encoding UTF8
 Write-Host ''
 Write-Host "Log: $out" -ForegroundColor Cyan
 if ($script:Stats.Failed -gt 0) { exit 1 }
+exit 0

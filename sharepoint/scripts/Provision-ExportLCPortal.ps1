@@ -355,3 +355,4 @@ if ($failures.Count -gt 0) {
 }
 Write-Host ''
 Write-Host 'Next: .\Import-MasterData.ps1 -SiteUrl <url>   then   .\Set-Permissions.ps1 -SiteUrl <url>' -ForegroundColor Green
+exit 0
