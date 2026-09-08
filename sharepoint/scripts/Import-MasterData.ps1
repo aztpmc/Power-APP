@@ -131,8 +131,17 @@ foreach ($plan in $loadPlan) {
         Write-Host "  ignoring columns not on the list: $($ignored -join ', ')" -ForegroundColor DarkGray
     }
 
+    # The natural-key columns are read below to match existing rows, so they must be fetched
+    # even if they were "ignored" above (e.g. missing from the list entirely) - otherwise
+    # $item[$k] throws a lazy-load CSOM error instead of a clear, catchable message.
+    $missingKeyFields = @($plan.Key | Where-Object { -not $fields.ContainsKey($_) })
+    if ($missingKeyFields.Count -gt 0) {
+        Write-Warning "  cannot match existing rows: key column(s) missing from the list: $($missingKeyFields -join ', ') - list skipped"
+        continue
+    }
+
     # One read of the whole list, then match in memory. Master lists are small by design.
-    $existing = Get-PnPListItem -List $plan.List -PageSize 2000 -Fields (@('ID') + $usable | Select-Object -Unique)
+    $existing = Get-PnPListItem -List $plan.List -PageSize 2000 -Fields (@('ID') + $usable + $plan.Key | Select-Object -Unique)
     $index = @{}
     foreach ($item in $existing) {
         $keyParts = foreach ($k in $plan.Key) { [string]$item[$k] }
