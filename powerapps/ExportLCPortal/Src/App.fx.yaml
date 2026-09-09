@@ -199,7 +199,7 @@ App As appinfo:
 
         // Splits a semicolon-separated config value into a table of numbers, e.g.
         // LCExpiryReminderDays "30;14;7;3;1" -> [30, 14, 7, 3, 1].
-        CfgList(key: Text): Table =
+        CfgList(key: Text) =
             ForAll(
                 Split(Coalesce(LookUp(colConfig, Title = key).ConfigValue, ""), ";") As s,
                 { Value: Value(Trim(s.Value)) }
@@ -249,7 +249,7 @@ App As appinfo:
         // =====================================================================
         // STATUS AND LIFECYCLE
         // =====================================================================
-        StatusRow(entity: Text, status: Text): Record =
+        StatusRow(entity: Text, status: Text) =
             LookUp(colStatus, EntityName = entity && StatusCode = status);
 
         StatusBadgeColor(entity: Text, status: Text): Color =
@@ -386,22 +386,22 @@ App As appinfo:
 
         // Per-LC child queries. LCItemId is indexed on every child list, so these stay
         // server-side no matter how large the lists become.
-        AmendmentsFor(lcId: Number): Table   = Filter('02_LCAmendments', LCItemId = lcId);
-        InvoicesFor(lcId: Number): Table     = Filter('03_Invoices', LCItemId = lcId);
-        ShipmentsFor(lcId: Number): Table    = Filter('04_Shipments', LCItemId = lcId);
-        PresentationsFor(lcId: Number): Table = Filter('05_Presentations', LCItemId = lcId);
-        DiscrepanciesFor(lcId: Number): Table = Filter('06_Discrepancies', LCItemId = lcId);
-        ProceedsFor(lcId: Number): Table     = Filter('07_Proceeds', LCItemId = lcId);
-        CorrespondenceFor(lcId: Number): Table = Filter('08_Correspondence', LCItemId = lcId);
-        TasksFor(lcId: Number): Table        = Filter('09_Tasks', LCItemId = lcId);
-        ChecklistFor(lcId: Number): Table    = Filter('20_LCDocumentChecklist', LCItemId = lcId);
-        DocumentsFor(lcNo: Text): Table      = Filter(ExportLCDocuments, LCNumber = lcNo);
+        AmendmentsFor(lcId: Number)   = Filter('02_LCAmendments', LCItemId = lcId);
+        InvoicesFor(lcId: Number)     = Filter('03_Invoices', LCItemId = lcId);
+        ShipmentsFor(lcId: Number)    = Filter('04_Shipments', LCItemId = lcId);
+        PresentationsFor(lcId: Number) = Filter('05_Presentations', LCItemId = lcId);
+        DiscrepanciesFor(lcId: Number) = Filter('06_Discrepancies', LCItemId = lcId);
+        ProceedsFor(lcId: Number)     = Filter('07_Proceeds', LCItemId = lcId);
+        CorrespondenceFor(lcId: Number) = Filter('08_Correspondence', LCItemId = lcId);
+        TasksFor(lcId: Number)        = Filter('09_Tasks', LCItemId = lcId);
+        ChecklistFor(lcId: Number)    = Filter('20_LCDocumentChecklist', LCItemId = lcId);
+        DocumentsFor(lcNo: Text)      = Filter(ExportLCDocuments, LCNumber = lcNo);
 
         // Audit is partitioned by month. Reading the current and previous partition covers
         // every realistic "what changed recently" question without a full-list scan.
         AuditPartitionNow    = Text(Today0, "yyyy-mm");
         AuditPartitionPrev   = Text(DateAdd(Today0, -1, Months), "yyyy-mm");
-        AuditFor(lcid: Text): Table =
+        AuditFor(lcid: Text) =
             Filter('10_AuditLog', InternalLCID = lcid,
                    PartitionKey in [AuditPartitionNow, AuditPartitionPrev]);
 
@@ -445,7 +445,7 @@ App As appinfo:
 
         // Translates a dashboard drill-through into filter criteria. One place decides what
         // "Expiring Soon" means in the register, and it agrees with the KPI by construction.
-        PresetFilter(preset: Text, mineOnly: Boolean): Record =
+        PresetFilter(preset: Text, mineOnly: Boolean) =
             With(
                 { base: Patch(DefaultRegisterFilter, { Preset: preset, Officer: If(mineOnly, User().Email, "") }) },
                 Switch(
